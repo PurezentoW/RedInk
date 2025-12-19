@@ -216,6 +216,14 @@ onMounted(async () => {
     return
   }
 
+  // 先尝试自动保存最后的更改（如果从OutlineView过来有未保存的更改）
+  try {
+    await store.autoSaveDraft()
+    console.log('开始生成前已保存最新更改')
+  } catch (e) {
+    console.error('保存最新更改失败:', e)
+  }
+
   // 创建历史记录（如果还没有）
   if (!store.recordId) {
     try {

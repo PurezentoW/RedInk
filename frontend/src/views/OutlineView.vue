@@ -3,15 +3,24 @@
     <div class="page-header" style="max-width: 1200px; margin: 0 auto 30px auto;">
       <div>
         <h1 class="page-title">编辑大纲</h1>
-        <p class="page-subtitle">调整页面顺序，修改文案，打造完美内容</p>
+        <p class="page-subtitle">
+          调整页面顺序，修改文案，打造完美内容
+          <span v-if="saveStatus" class="save-status" :class="saveStatus.type">
+            {{ saveStatus.message }}
+          </span>
+        </p>
       </div>
       <div style="display: flex; gap: 12px;">
         <button class="btn btn-secondary" @click="goBack" style="background: white; border: 1px solid var(--border-color);">
           上一步
         </button>
-        <button class="btn btn-primary" @click="startGeneration">
+        <button
+          class="btn btn-primary"
+          @click="startGeneration"
+          :disabled="isSaving"
+        >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"></path><line x1="16" y1="8" x2="2" y2="22"></line><line x1="17.5" y1="15" x2="9" y2="15"></line></svg>
-          开始生成图片
+          {{ isSaving ? '保存中...' : '开始生成图片' }}
         </button>
       </div>
     </div>
@@ -48,7 +57,8 @@
           v-model="page.content"
           class="textarea-paper"
           placeholder="在此输入文案..."
-          @input="store.updatePage(page.index, page.content)"
+          @input="handleInput"
+          @blur="handleBlur"
         />
         
         <div class="word-count">{{ page.content.length }} 字</div>
@@ -68,15 +78,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGeneratorStore } from '../stores/generator'
 
 const router = useRouter()
 const store = useGeneratorStore()
 
+// 原有状态
 const dragOverIndex = ref<number | null>(null)
 const draggedIndex = ref<number | null>(null)
+
+// 新增状态 - 自动保存相关
+const saveStatus = ref<{ type: 'saving' | 'saved' | 'error', message: string } | null>(null)
+const isSaving = ref(false)
+const saveTimer = ref<number | null>(null)
+const hasUnsavedChanges = ref(false)
 
 const getPageTypeName = (type: string) => {
   const names = {
@@ -85,6 +102,85 @@ const getPageTypeName = (type: string) => {
     summary: '总结'
   }
   return names[type as keyof typeof names] || '内容'
+}
+
+// 防抖保存函数
+const debouncedSave = () => {
+  if (saveTimer.value) {
+    clearTimeout(saveTimer.value)
+  }
+
+  saveTimer.value = window.setTimeout(async () => {
+    await performAutoSave()
+  }, 1000) // 1秒防抖
+}
+
+// 执行自动保存
+const performAutoSave = async () => {
+  if (!hasUnsavedChanges.value) return
+
+  isSaving.value = true
+  saveStatus.value = { type: 'saving', message: '正在保存...' }
+
+  try {
+    await store.autoSaveDraft()
+    saveStatus.value = { type: 'saved', message: '已自动保存' }
+    hasUnsavedChanges.value = false
+
+    // 3秒后清除保存状态提示
+    setTimeout(() => {
+      if (saveStatus.value?.type === 'saved') {
+        saveStatus.value = null
+      }
+    }, 3000)
+  } catch (error) {
+    console.error('自动保存失败:', error)
+    saveStatus.value = { type: 'error', message: '保存失败' }
+  } finally {
+    isSaving.value = false
+  }
+}
+
+// 处理输入
+const handleInput = (event: Event) => {
+  const target = event.target as HTMLTextAreaElement
+
+  // 由于 v-model="page.content" 已经自动更新了 store.outline.pages 中的内容，
+  // 我们只需要触发同步更新 raw 文本即可
+  // 这里我们通过检测内容变化来确保 raw 文本同步
+  store.syncRawFromPages()
+
+  hasUnsavedChanges.value = true
+  // 使用防抖保存
+  debouncedSave()
+}
+
+// 处理失焦
+const handleBlur = () => {
+  // 失焦时立即保存（如果有未保存的更改）
+  if (hasUnsavedChanges.value) {
+    performAutoSave()
+  }
+}
+
+// 页面卸载前保存
+onMounted(() => {
+  window.addEventListener('beforeunload', handleBeforeUnload)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+  if (saveTimer.value) {
+    clearTimeout(saveTimer.value)
+  }
+})
+
+// 关闭页面前提醒
+const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+  if (hasUnsavedChanges.value) {
+    e.preventDefault()
+    e.returnValue = ''
+  }
 }
 
 // 拖拽逻辑
@@ -105,6 +201,8 @@ const onDrop = (e: DragEvent, index: number) => {
   dragOverIndex.value = null
   if (draggedIndex.value !== null && draggedIndex.value !== index) {
     store.movePage(draggedIndex.value, index)
+    hasUnsavedChanges.value = true
+    debouncedSave()
   }
   draggedIndex.value = null
 }
@@ -112,11 +210,15 @@ const onDrop = (e: DragEvent, index: number) => {
 const deletePage = (index: number) => {
   if (confirm('确定要删除这一页吗？')) {
     store.deletePage(index)
+    hasUnsavedChanges.value = true
+    debouncedSave()
   }
 }
 
 const addPage = (type: 'cover' | 'content' | 'summary') => {
   store.addPage(type, '')
+  hasUnsavedChanges.value = true
+  debouncedSave()
   // 滚动到底部
   nextTick(() => {
     window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })
@@ -127,7 +229,11 @@ const goBack = () => {
   router.back()
 }
 
-const startGeneration = () => {
+const startGeneration = async () => {
+  // 先执行最后一次保存
+  if (hasUnsavedChanges.value) {
+    await performAutoSave()
+  }
   router.push('/generate')
 }
 </script>
@@ -283,5 +389,29 @@ const startGeneration = () => {
   font-size: 32px;
   font-weight: 300;
   margin-bottom: 8px;
+}
+
+/* 新增样式 - 保存状态 */
+.save-status {
+  font-size: 13px;
+  margin-left: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.save-status.saving {
+  color: #1890ff;
+  background: rgba(24, 144, 255, 0.1);
+}
+
+.save-status.saved {
+  color: #52c41a;
+  background: rgba(82, 196, 26, 0.1);
+}
+
+.save-status.error {
+  color: #ff4d4f;
+  background: rgba(255, 77, 79, 0.1);
 }
 </style>

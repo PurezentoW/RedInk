@@ -276,6 +276,49 @@ export const useGeneratorStore = defineStore('generator', {
     // 保存当前状态
     saveToStorage() {
       saveState(this)
+    },
+
+    // 自动保存草稿到后端
+    async autoSaveDraft() {
+      // 如果没有主题或大纲内容，不保存
+      if (!this.topic.trim() || !this.outline.pages.length) {
+        return
+      }
+
+      try {
+        // 动态导入 API 函数，避免循环依赖
+        const { createHistory, updateHistory } = await import('../api')
+
+        if (this.recordId) {
+          // 更新现有记录
+          await updateHistory(this.recordId, {
+            outline: {
+              raw: this.outline.raw,
+              pages: this.outline.pages
+            }
+          })
+          console.log('草稿已更新到后端')
+        } else {
+          // 创建新记录
+          const result = await createHistory(
+            this.topic,
+            this.outline
+          )
+          if (result.success && result.record_id) {
+            this.recordId = result.record_id
+            console.log('草稿已创建到后端:', this.recordId)
+          }
+        }
+      } catch (error) {
+        console.error('自动保存草稿失败:', error)
+        // 不抛出错误，静默失败
+      }
+    },
+
+    // 手动触发保存（给用户明确的保存反馈）
+    async manualSaveDraft() {
+      await this.autoSaveDraft()
+      return !!this.recordId
     }
   }
 })

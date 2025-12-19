@@ -49,7 +49,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGeneratorStore } from '../stores/generator'
-import { generateOutline } from '../api'
+import { generateOutline, createHistory } from '../api'
 
 // 引入组件
 import ShowcaseBackground from '../components/home/ShowcaseBackground.vue'
@@ -106,6 +106,26 @@ async function handleGenerate() {
       // 清理 ComposerInput 的预览
       composerRef.value?.clearPreviews()
       uploadedImageFiles.value = []
+
+      // ===== 新增：自动创建草稿历史记录 =====
+      try {
+        const historyResult = await createHistory(
+          topic.value.trim(),
+          {
+            raw: result.outline || '',
+            pages: result.pages || []
+          }
+        )
+
+        if (historyResult.success && historyResult.record_id) {
+          store.recordId = historyResult.record_id
+          console.log('草稿已自动保存:', historyResult.record_id)
+        }
+      } catch (error) {
+        console.error('自动保存草稿失败:', error)
+        // 不阻断用户流程，静默失败
+      }
+      // ===== 新增结束 =====
 
       router.push('/outline')
     } else {
