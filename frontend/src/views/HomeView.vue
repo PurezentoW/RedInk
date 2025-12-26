@@ -49,7 +49,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGeneratorStore } from '../stores/generator'
-import { generateOutline, createHistory } from '../api'
+import { generateOutlineStream, createHistory } from '../api'
 
 // 引入组件
 import ShowcaseBackground from '../components/home/ShowcaseBackground.vue'
@@ -75,7 +75,7 @@ function handleImagesChange(images: File[]) {
 }
 
 /**
- * 生成大纲
+ * 生成大纲（使用流式API）
  */
 async function handleGenerate() {
   if (!topic.value.trim()) return
@@ -83,56 +83,73 @@ async function handleGenerate() {
   loading.value = true
   error.value = ''
 
+  const imageFiles = uploadedImageFiles.value
+
+  // 初始化流式状态
+  store.startStreaming(topic.value.trim())
+
+  // 跳转到OutlineView（打字机效果在那里显示）
+  router.push('/outline')
+
+  // 清理 ComposerInput 的预览
+  composerRef.value?.clearPreviews()
+  uploadedImageFiles.value = []
+
   try {
-    const imageFiles = uploadedImageFiles.value
-
-    const result = await generateOutline(
+    await generateOutlineStream(
       topic.value.trim(),
-      imageFiles.length > 0 ? imageFiles : undefined
-    )
+      imageFiles.length > 0 ? imageFiles : undefined,
+      // onText - 打字机效果核心回调
+      (chunk, accumulated) => {
+        store.updateStreamingText(chunk, accumulated)
+      },
+      // onComplete - 生成完成回调
+      async (result) => {
+        store.finishStreaming(result)
 
-    if (result.success && result.pages) {
-      store.setTopic(topic.value.trim())
-      store.setOutline(result.outline || '', result.pages)
-      store.recordId = null
-
-      // 保存用户上传的图片到 store
-      if (imageFiles.length > 0) {
-        store.userImages = imageFiles
-      } else {
-        store.userImages = []
-      }
-
-      // 清理 ComposerInput 的预览
-      composerRef.value?.clearPreviews()
-      uploadedImageFiles.value = []
-
-      // ===== 新增：自动创建草稿历史记录 =====
-      try {
-        const historyResult = await createHistory(
-          topic.value.trim(),
-          {
-            raw: result.outline || '',
-            pages: result.pages || []
-          }
-        )
-
-        if (historyResult.success && historyResult.record_id) {
-          store.recordId = historyResult.record_id
-          console.log('草稿已自动保存:', historyResult.record_id)
+        // 保存用户上传的图片到 store
+        if (imageFiles.length > 0) {
+          store.userImages = imageFiles
+        } else {
+          store.userImages = []
         }
-      } catch (error) {
-        console.error('自动保存草稿失败:', error)
-        // 不阻断用户流程，静默失败
-      }
-      // ===== 新增结束 =====
 
-      router.push('/outline')
-    } else {
-      error.value = result.error || '生成大纲失败'
-    }
+        // 自动创建草稿历史记录
+        try {
+          const historyResult = await createHistory(
+            topic.value.trim(),
+            {
+              raw: result.outline || '',
+              pages: result.pages || []
+            }
+          )
+
+          if (historyResult.success && historyResult.record_id) {
+            store.recordId = historyResult.record_id
+            console.log('草稿已自动保存:', historyResult.record_id)
+          }
+        } catch (err) {
+          console.error('自动保存草稿失败:', err)
+          // 不阻断用户流程，静默失败
+        }
+      },
+      // onError - 后端返回错误
+      (errorMsg) => {
+        error.value = errorMsg
+        store.isStreaming = false
+        store.streamingText = ''
+      },
+      // onStreamError - 网络或流错误
+      (err) => {
+        error.value = err.message || '网络错误，请重试'
+        store.isStreaming = false
+        store.streamingText = ''
+      }
+    )
   } catch (err: any) {
     error.value = err.message || '网络错误，请重试'
+    store.isStreaming = false
+    store.streamingText = ''
   } finally {
     loading.value = false
   }

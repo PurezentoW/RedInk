@@ -2,9 +2,10 @@
 import time
 import random
 import base64
+import json
 import requests
 from functools import wraps
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Generator
 from .image_compressor import compress_image
 
 
@@ -108,8 +109,9 @@ class TextChatClient:
         max_output_tokens: int = 8000,
         images: List[Union[bytes, str]] = None,
         system_prompt: str = None,
+        stream: bool = False,
         **kwargs
-    ) -> str:
+    ) -> Union[str, Generator[str, None, None]]:
         """
         生成文本（支持图片输入）
 
@@ -145,7 +147,7 @@ class TextChatClient:
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_output_tokens,
-            "stream": False
+            "stream": stream
         }
 
         headers = {
@@ -154,12 +156,23 @@ class TextChatClient:
             "Authorization": f"Bearer {self.api_key}"
         }
 
-        response = requests.post(
-            self.chat_endpoint,
-            json=payload,
-            headers=headers,
-            timeout=300  # 5分钟超时
-        )
+        # 如果不是流式模式，使用原有逻辑
+        if not stream:
+            response = requests.post(
+                self.chat_endpoint,
+                json=payload,
+                headers=headers,
+                timeout=300  # 5分钟超时
+            )
+        else:
+            # 流式模式
+            response = requests.post(
+                self.chat_endpoint,
+                json=payload,
+                headers=headers,
+                timeout=300,
+                stream=True  # 启用流式接收
+            )
 
         if response.status_code != 200:
             error_detail = response.text[:500]
@@ -232,21 +245,45 @@ class TextChatClient:
                     "3. 检查模型名称是否正确"
                 )
 
-        result = response.json()
+        # 流式模式返回生成器
+        if stream:
+            def stream_generator():
+                """流式生成文本的生成器"""
+                for line in response.iter_lines():
+                    if line:
+                        line_str = line.decode('utf-8')
+                        if line_str.startswith('data: '):
+                            data_str = line_str[6:]
+                            if data_str == '[DONE]':
+                                break
+                            try:
+                                data = json.loads(data_str)
+                                if 'choices' in data and len(data['choices']) > 0:
+                                    delta = data['choices'][0].get('delta', {})
+                                    content = delta.get('content', '')
+                                    if content:
+                                        yield content
+                            except json.JSONDecodeError:
+                                continue
 
-        # 提取生成的文本
-        if "choices" in result and len(result["choices"]) > 0:
-            return result["choices"][0]["message"]["content"]
+            return stream_generator()
         else:
-            raise Exception(
-                f"Text API 响应格式异常：未找到生成的文本。\n"
-                f"响应数据: {str(result)[:500]}\n"
-                "可能原因：\n"
-                "1. API返回格式与OpenAI标准不一致\n"
-                "2. 请求被拒绝或过滤\n"
-                "3. 模型输出为空\n"
-                "建议：检查API文档确认响应格式"
-            )
+            # 同步模式解析响应
+            result = response.json()
+
+            # 提取生成的文本
+            if "choices" in result and len(result["choices"]) > 0:
+                return result["choices"][0]["message"]["content"]
+            else:
+                raise Exception(
+                    f"Text API 响应格式异常：未找到生成的文本。\n"
+                    f"响应数据: {str(result)[:500]}\n"
+                    "可能原因：\n"
+                    "1. API返回格式与OpenAI标准不一致\n"
+                    "2. 请求被拒绝或过滤\n"
+                    "3. 模型输出为空\n"
+                    "建议：检查API文档确认响应格式"
+                )
 
 
 def get_text_chat_client(provider_config: dict):

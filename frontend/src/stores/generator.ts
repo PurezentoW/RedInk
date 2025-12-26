@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import type { Page } from '../api'
+import { parsePagesFromText, detectNewPages, determineStreamingPage } from '../utils/outlineParser'
 
 export interface GeneratedImage {
   index: number
@@ -21,6 +22,12 @@ export interface GeneratorState {
     raw: string
     pages: Page[]
   }
+
+  // 流式生成状态（重构）
+  isStreaming: boolean
+  currentStreamingPageIndex: number  // 当前正在流式显示的页面索引
+  allPagesStreamed: boolean          // 所有页面是否都已完成流式
+  accumulatedText: string            // 累积的完整文本（用于解析页面）
 
   // 生成进度
   progress: {
@@ -86,6 +93,10 @@ export const useGeneratorStore = defineStore('generator', {
         raw: '',
         pages: []
       },
+      isStreaming: false,
+      currentStreamingPageIndex: -1,
+      allPagesStreamed: false,
+      accumulatedText: '',
       progress: saved.progress || {
         current: 0,
         total: 0,
@@ -102,6 +113,110 @@ export const useGeneratorStore = defineStore('generator', {
     // 设置主题
     setTopic(topic: string) {
       this.topic = topic
+    },
+
+    // 开始流式生成（重构）
+    startStreaming(topic: string) {
+      this.stage = 'outline'
+      this.topic = topic
+      this.isStreaming = true
+      this.currentStreamingPageIndex = -1
+      this.allPagesStreamed = false
+      this.accumulatedText = ''
+      this.outline.raw = ''
+      this.outline.pages = []
+    },
+
+    // 更新流式文本（核心逻辑）
+    updateStreamingText(chunk: string, accumulated: string) {
+      this.accumulatedText = accumulated
+
+      // 重新解析所有页面
+      const newPages = parsePagesFromText(accumulated)
+      const oldPages = this.outline.pages
+
+      // 检测新增页面
+      const newIndices = detectNewPages(oldPages, newPages)
+
+      // 添加新页面到 store
+      for (const index of newIndices) {
+        const newPage = newPages[index]
+        newPage.isStreaming = true
+        newPage.isStreamComplete = false
+        newPage.streamingContent = ''
+
+        this.outline.pages.push(newPage)
+
+        console.log(`📄 新增页面 ${index}: ${newPage.type}, 内容:`, newPage.content.substring(0, 20))
+      }
+
+      // 从累积文本中提取所有页面内容
+      const pageTexts = accumulated.split(/<page>/i).map(text => text.trim()).filter(text => text)
+
+      // 更新所有已存在页面的流式内容
+      this.outline.pages.forEach((page, idx) => {
+        if (idx < pageTexts.length) {
+          // 使用对应的页面文本更新流式内容
+          page.streamingContent = pageTexts[idx]
+
+          // 如果该页面正在流式中
+          if (page.isStreaming) {
+            this.currentStreamingPageIndex = idx
+
+            // 检查是否是该页面的最后一段（检测是否有下一个页面）
+            const isLastPage = idx === pageTexts.length - 1
+
+            if (!isLastPage) {
+              // 不是最后一页，说明该页面已完成
+              page.isStreamComplete = true
+              page.isStreaming = false
+              page.content = page.streamingContent
+              console.log(`✅ 页面 ${idx} 流式完成`)
+            }
+          }
+        }
+      })
+
+      // 确定当前应该流式显示的页面
+      const streamingIndex = determineStreamingPage(
+        this.outline.pages,
+        this.currentStreamingPageIndex
+      )
+
+      if (streamingIndex !== -1) {
+        const page = this.outline.pages[streamingIndex]
+        // 确保流式内容是最新的
+        page.streamingContent = pageTexts[streamingIndex] || ''
+      }
+    },
+
+    // 完成流式生成（重构）
+    finishStreaming(result: { outline: string; pages: Page[]; has_images?: boolean }) {
+      this.outline.raw = result.outline
+      this.outline.pages = result.pages
+
+      // 标记所有页面为完成状态
+      this.outline.pages.forEach(page => {
+        page.isStreamComplete = true
+        page.isStreaming = false
+        page.content = page.content || page.streamingContent || ''
+      })
+
+      this.isStreaming = false
+      this.currentStreamingPageIndex = -1
+      this.allPagesStreamed = true
+      this.accumulatedText = ''
+      this.stage = 'outline'
+
+      console.log('🎉 所有页面流式生成完成')
+    },
+
+    // 流式生成错误处理（新增）
+    stopStreaming() {
+      this.isStreaming = false
+      this.currentStreamingPageIndex = -1
+      this.allPagesStreamed = false
+      this.accumulatedText = ''
     },
 
     // 设置大纲
@@ -260,6 +375,10 @@ export const useGeneratorStore = defineStore('generator', {
         raw: '',
         pages: []
       }
+      this.isStreaming = false
+      this.currentStreamingPageIndex = -1
+      this.allPagesStreamed = false
+      this.accumulatedText = ''
       this.progress = {
         current: 0,
         total: 0,

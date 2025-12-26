@@ -4,7 +4,7 @@ import re
 import base64
 import yaml
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Generator
 from backend.utils.text_client import get_text_chat_client
 
 logger = logging.getLogger(__name__)
@@ -227,6 +227,100 @@ class OutlineService:
             return {
                 "success": False,
                 "error": detailed_error
+            }
+
+    def generate_outline_stream(
+        self,
+        topic: str,
+        images: Optional[List[bytes]] = None
+    ) -> Generator[Dict[str, Any], None, None]:
+        """
+        流式生成大纲（SSE事件流）
+
+        Yields:
+            SSE事件字典
+            - event: "progress" | "text" | "complete" | "error"
+            - data: 事件数据
+        """
+        try:
+            logger.info(f"开始流式生成大纲: topic={topic[:50]}...")
+            prompt = self.prompt_template.format(topic=topic)
+
+            if images and len(images) > 0:
+                prompt += f"\n\n注意：用户提供了 {len(images)} 张参考图片，请在生成大纲时考虑这些图片的内容和风格。这些图片可能是产品图、个人照片或场景图，请根据图片内容来优化大纲，使生成的内容与图片相关联。"
+                logger.debug(f"添加了 {len(images)} 张参考图片到提示词")
+
+            # 从配置中获取模型参数
+            active_provider = self.text_config.get('active_provider', 'google_gemini')
+            providers = self.text_config.get('providers', {})
+            provider_config = providers.get(active_provider, {})
+
+            model = provider_config.get('model', 'gemini-2.0-flash-exp')
+            temperature = provider_config.get('temperature', 1.0)
+            max_output_tokens = provider_config.get('max_output_tokens', 8000)
+
+            logger.info(f"调用流式文本生成 API: model={model}, temperature={temperature}")
+
+            # 发送开始事件
+            yield {
+                "event": "progress",
+                "data": {
+                    "status": "starting",
+                    "message": "正在生成大纲..."
+                }
+            }
+
+            # 调用流式生成
+            stream_generator = self.client.generate_text(
+                prompt=prompt,
+                model=model,
+                temperature=temperature,
+                max_output_tokens=max_output_tokens,
+                images=images,
+                stream=True  # 启用流式
+            )
+
+            # 累积文本
+            accumulated_text = ""
+
+            for chunk in stream_generator:
+                accumulated_text += chunk
+
+                # 发送文本块事件（打字机效果核心）
+                yield {
+                    "event": "text",
+                    "data": {
+                        "chunk": chunk,
+                        "accumulated": accumulated_text
+                    }
+                }
+
+            logger.debug(f"流式API返回文本长度: {len(accumulated_text)} 字符")
+
+            # 生成完成后解析页面
+            pages = self._parse_outline(accumulated_text)
+            logger.info(f"流式大纲生成完成，共 {len(pages)} 页")
+
+            # 发送完成事件
+            yield {
+                "event": "complete",
+                "data": {
+                    "outline": accumulated_text,
+                    "pages": pages,
+                    "has_images": images is not None and len(images) > 0
+                }
+            }
+
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"流式大纲生成失败: {error_msg}")
+
+            # 发送错误事件
+            yield {
+                "event": "error",
+                "data": {
+                    "error": error_msg
+                }
             }
 
 

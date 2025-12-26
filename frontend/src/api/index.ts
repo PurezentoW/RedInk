@@ -6,6 +6,10 @@ export interface Page {
   index: number
   type: 'cover' | 'content' | 'summary'
   content: string
+  // 新增：流式状态字段
+  streamingContent?: string   // 流式显示的内容（可能是片段）
+  isStreaming?: boolean       // 是否正在流式显示
+  isStreamComplete?: boolean  // 流式是否已完成
 }
 
 export interface OutlineResponse {
@@ -60,6 +64,105 @@ export async function generateOutline(
     topic
   })
   return response.data
+}
+
+// 流式生成大纲（SSE）
+export async function generateOutlineStream(
+  topic: string,
+  images?: File[],
+  onText?: (chunk: string, accumulated: string) => void,
+  onComplete?: (result: { outline: string; pages: Page[]; has_images?: boolean }) => void,
+  onError?: (error: string) => void,
+  onStreamError?: (error: Error) => void
+): Promise<void> {
+  try {
+    // 准备请求数据
+    let body: BodyInit
+
+    if (images && images.length > 0) {
+      const formData = new FormData()
+      formData.append('topic', topic)
+      images.forEach(file => formData.append('images', file))
+      body = formData
+    } else {
+      body = JSON.stringify({ topic })
+    }
+
+    const response = await fetch(`${API_BASE_URL}/outline/stream`, {
+      method: 'POST',
+      headers: images ? undefined : { 'Content-Type': 'application/json' },
+      body
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error('无法读取响应流')
+    }
+
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    // SSE 解析逻辑
+    while (true) {
+      const { done, value } = await reader.read()
+
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (!line.trim()) continue
+
+        const [eventLine, dataLine] = line.split('\n')
+        if (!eventLine || !dataLine) continue
+
+        const eventType = eventLine.replace('event: ', '').trim()
+        const eventData = dataLine.replace('data: ', '').trim()
+
+        try {
+          const data = JSON.parse(eventData)
+
+          switch (eventType) {
+            case 'progress':
+              // 可以用于显示"正在生成"状态
+              break
+            case 'text':
+              // 打字机效果核心
+              if (onText) {
+                onText(data.chunk, data.accumulated)
+              }
+              break
+            case 'complete':
+              if (onComplete) {
+                onComplete({
+                  outline: data.outline,
+                  pages: data.pages,
+                  has_images: data.has_images
+                })
+              }
+              break
+            case 'error':
+              if (onError) {
+                onError(data.error)
+              }
+              break
+          }
+        } catch (e) {
+          console.error('解析 SSE 数据失败:', e)
+        }
+      }
+    }
+  } catch (error) {
+    if (onStreamError) {
+      onStreamError(error as Error)
+    }
+  }
 }
 
 // 获取图片 URL（新格式：task_id/filename）

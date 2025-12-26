@@ -3,12 +3,14 @@
 
 包含功能：
 - 生成大纲（支持图片上传）
+- 流式生成大纲（SSE）
 """
 
 import time
 import base64
+import json
 import logging
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, Response
 from backend.services.outline import get_outline_service
 from .utils import log_request, log_error
 
@@ -18,6 +20,74 @@ logger = logging.getLogger(__name__)
 def create_outline_blueprint():
     """创建大纲路由蓝图（工厂函数，支持多次调用）"""
     outline_bp = Blueprint('outline', __name__)
+
+    @outline_bp.route('/outline/stream', methods=['POST'])
+    def generate_outline_stream():
+        """
+        流式生成大纲（SSE）
+
+        请求格式：
+        1. multipart/form-data（带图片文件）
+           - topic: 主题文本
+           - images: 图片文件列表
+
+        2. application/json（无图片或 base64 图片）
+           - topic: 主题文本
+           - images: base64 编码的图片数组（可选）
+
+        返回：SSE 事件流
+        - progress: 开始生成
+        - text: 文本块（打字机效果）
+        - complete: 生成完成
+        - error: 错误
+        """
+        start_time = time.time()
+
+        try:
+            # 解析请求数据
+            topic, images = _parse_outline_request()
+
+            log_request('/outline/stream', {'topic': topic, 'images': images})
+
+            # 验证必填参数
+            if not topic:
+                logger.warning("流式大纲生成请求缺少 topic 参数")
+                return jsonify({
+                    "success": False,
+                    "error": "参数错误：topic 不能为空。\n请提供要生成图文的主题内容。"
+                }), 400
+
+            # 调用大纲生成服务
+            logger.info(f"🔄 开始流式生成大纲，主题: {topic[:50]}...")
+            outline_service = get_outline_service()
+
+            def generate():
+                """SSE 事件生成器"""
+                for event in outline_service.generate_outline_stream(topic, images):
+                    event_type = event["event"]
+                    event_data = event["data"]
+
+                    # 格式化为 SSE 格式
+                    yield f"event: {event_type}\n"
+                    yield f"data: {json.dumps(event_data, ensure_ascii=False)}\n\n"
+
+            # 返回 SSE 流
+            return Response(
+                generate(),
+                mimetype='text/event-stream',
+                headers={
+                    'Cache-Control': 'no-cache',
+                    'X-Accel-Buffering': 'no',
+                }
+            )
+
+        except Exception as e:
+            log_error('/outline/stream', e)
+            error_msg = str(e)
+            return jsonify({
+                "success": False,
+                "error": f"流式大纲生成异常。\n错误详情: {error_msg}\n建议：检查后端日志获取更多信息"
+            }), 500
 
     @outline_bp.route('/outline', methods=['POST'])
     def generate_outline():

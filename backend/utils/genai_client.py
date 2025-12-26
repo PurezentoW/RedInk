@@ -2,6 +2,7 @@
 import time
 import random
 from functools import wraps
+from typing import Generator, Union
 from google import genai
 from google.genai import types
 
@@ -107,8 +108,9 @@ class GenAIClient:
         use_thinking: bool = False,
         images: list = None,
         system_prompt: str = None,
+        stream: bool = False,
         **kwargs
-    ) -> str:
+    ) -> Union[str, Generator[str, None, None]]:
         """
         生成文本
 
@@ -161,17 +163,34 @@ class GenAIClient:
 
         generate_content_config = types.GenerateContentConfig(**config_kwargs)
 
-        result = ""
-        for chunk in self.client.models.generate_content_stream(
-            model=model,
-            contents=contents,
-            config=generate_content_config,
-        ):
-            if not chunk.candidates or not chunk.candidates[0].content or not chunk.candidates[0].content.parts:
-                continue
-            result += chunk.text
+        # 如果是流式模式，返回生成器
+        if stream:
+            def stream_generator():
+                """流式生成文本的生成器"""
+                for chunk in self.client.models.generate_content_stream(
+                    model=model,
+                    contents=contents,
+                    config=generate_content_config,
+                ):
+                    if not chunk.candidates or not chunk.candidates[0].content or not chunk.candidates[0].content.parts:
+                        continue
+                    if chunk.text:
+                        yield chunk.text
 
-        return result
+            return stream_generator()
+        else:
+            # 同步模式，累积所有文本
+            result = ""
+            for chunk in self.client.models.generate_content_stream(
+                model=model,
+                contents=contents,
+                config=generate_content_config,
+            ):
+                if not chunk.candidates or not chunk.candidates[0].content or not chunk.candidates[0].content.parts:
+                    continue
+                result += chunk.text
+
+            return result
 
     @retry_on_429(max_retries=5, base_delay=3)  # 图片生成重试更多次
     def generate_image(

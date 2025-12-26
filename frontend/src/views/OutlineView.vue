@@ -11,13 +11,18 @@
         </p>
       </div>
       <div style="display: flex; gap: 12px;">
-        <button class="btn btn-secondary" @click="goBack" style="background: white; border: 1px solid var(--border-color);">
+        <button
+          class="btn btn-secondary"
+          @click="goBack"
+          :disabled="store.isStreaming"
+          style="background: white; border: 1px solid var(--border-color);"
+        >
           上一步
         </button>
         <button
           class="btn btn-primary"
           @click="startGeneration"
-          :disabled="isSaving"
+          :disabled="isSaving || store.isStreaming"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"></path><line x1="16" y1="8" x2="2" y2="22"></line><line x1="17.5" y1="15" x2="9" y2="15"></line></svg>
           {{ isSaving ? '保存中...' : '开始生成图片' }}
@@ -25,47 +30,84 @@
       </div>
     </div>
 
-    <div class="outline-grid">
-      <div 
-        v-for="(page, idx) in store.outline.pages" 
+    <!-- 流式生成进度提示（修改） -->
+    <div v-if="store.isStreaming" class="streaming-progress-bar">
+      <div class="spinner"></div>
+      <span>AI 正在创作中... ({{ store.outline.pages.length }} 页)</span>
+    </div>
+
+    <div class="outline-grid" :class="{ disabled: store.isStreaming }">
+      <div
+        v-for="(page, idx) in store.outline.pages"
         :key="page.index"
         class="card outline-card"
-        :draggable="true"
+        :class="{
+          'dragging-over': dragOverIndex === idx,
+          'streaming-active': page.isStreaming
+        }"
+        draggable="true"
         @dragstart="onDragStart($event, idx)"
         @dragover.prevent="onDragOver($event, idx)"
+        @dragenter.prevent
         @drop="onDrop($event, idx)"
-        :class="{ 'dragging-over': dragOverIndex === idx }"
+        @dragend="() => { dragOverIndex = null; draggedIndex = null }"
       >
         <!-- 拖拽手柄 (改为右上角或更加隐蔽) -->
         <div class="card-top-bar">
           <div class="page-info">
              <span class="page-number">P{{ idx + 1 }}</span>
              <span class="page-type" :class="page.type">{{ getPageTypeName(page.type) }}</span>
+             <!-- 流式状态指示器（新增） -->
+             <span v-if="page.isStreaming" class="streaming-badge">
+               <span class="streaming-dot"></span>
+               生成中
+             </span>
           </div>
-          
-          <div class="card-controls">
+
+          <div class="card-controls" :class="{ disabled: store.isStreaming }">
             <div class="drag-handle" title="拖拽排序">
                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>
             </div>
-            <button class="icon-btn" @click="deletePage(idx)" title="删除此页">
+            <button
+              class="icon-btn"
+              @click="deletePage(idx)"
+              title="删除此页"
+              :disabled="store.isStreaming"
+            >
                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
             </button>
           </div>
         </div>
 
-        <textarea
-          v-model="page.content"
-          class="textarea-paper"
-          placeholder="在此输入文案..."
-          @input="handleInput"
-          @blur="handleBlur"
-        />
-        
-        <div class="word-count">{{ page.content.length }} 字</div>
+        <!-- 内容显示区域（修改） -->
+        <div class="content-display">
+          <!-- 正在流式：只读显示 + 打字机效果 -->
+          <div v-if="page.isStreaming" class="streaming-content">
+            <pre class="typewriter-text">
+              {{ page.streamingContent }}<span class="cursor">|</span>
+            </pre>
+          </div>
+
+          <!-- 流式完成或未开始：可编辑文本框 -->
+          <textarea
+            v-else
+            v-model="page.content"
+            class="textarea-paper"
+            placeholder="在此输入文案..."
+            @input="handleInput"
+            @blur="handleBlur"
+          />
+        </div>
+
+        <div class="word-count">{{ (page.streamingContent || page.content).length }} 字</div>
       </div>
 
-      <!-- 添加按钮卡片 -->
-      <div class="card add-card-dashed" @click="addPage('content')">
+      <!-- 添加按钮卡片（流式中隐藏） -->
+      <div
+        v-if="!store.isStreaming"
+        class="card add-card-dashed"
+        @click="addPage('content')"
+      >
         <div class="add-content">
           <div class="add-icon">+</div>
           <span>添加页面</span>
@@ -242,9 +284,9 @@ const startGeneration = async () => {
 /* 网格布局 */
 .outline-grid {
   display: grid;
-  /* 响应式列：最小宽度 280px，自动填充 */
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 24px;
+  /* 响应式列：最小宽度 320px，自动填充 */
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
   max-width: 1400px;
   margin: 0 auto;
   padding: 0 20px;
@@ -253,27 +295,27 @@ const startGeneration = async () => {
 .outline-card {
   display: flex;
   flex-direction: column;
-  padding: 16px; /* 减小内边距 */
-  transition: all 0.2s ease;
-  border: none;
-  border-radius: 8px; /* 较小的圆角 */
+  padding: 12px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid #e8e8e8;
+  border-radius: 12px;
   background: white;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-  /* 保持一定的长宽比感，虽然高度自适应，但由于 flex column 和内容撑开，
-     这里设置一个 min-height 让它看起来像个竖向卡片 */
-  min-height: 360px; 
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  min-height: 500px;
   position: relative;
+  overflow: hidden;
 }
 
 .outline-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.08);
-  z-index: 10;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(0,0,0,0.06);
+  border-color: #d9d9d9;
 }
 
 .outline-card.dragging-over {
   border: 2px dashed var(--primary);
   opacity: 0.8;
+  background: rgba(255, 36, 66, 0.02);
 }
 
 /* 顶部栏 */
@@ -281,47 +323,63 @@ const startGeneration = async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #f5f5f5;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f0f0f0;
 }
 
 .page-info {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .page-number {
-  font-size: 14px;
-  font-weight: 700;
-  color: #ccc;
-  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #bfbfbf;
+  font-family: 'Inter', -apple-system, sans-serif;
+  letter-spacing: 0.5px;
 }
 
 .page-type {
   font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 4px;
+  padding: 4px 10px;
+  border-radius: 6px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
-.page-type.cover { color: #FF4D4F; background: #FFF1F0; }
-.page-type.content { color: #8c8c8c; background: #f5f5f5; }
-.page-type.summary { color: #52C41A; background: #F6FFED; }
+.page-type.cover {
+  color: #ff4d4f;
+  background: linear-gradient(135deg, #fff1f0 0%, #ffccc7 100%);
+}
+.page-type.content {
+  color: #595959;
+  background: linear-gradient(135deg, #f5f5f5 0%, #e8e8e8 100%);
+}
+.page-type.summary {
+  color: #52c41a;
+  background: linear-gradient(135deg, #f6ffed 0%, #d9f7be 100%);
+}
 
 .card-controls {
   display: flex;
-  gap: 8px;
-  opacity: 0.4;
+  gap: 6px;
+  opacity: 0;
   transition: opacity 0.2s;
 }
 .outline-card:hover .card-controls { opacity: 1; }
 
 .drag-handle {
   cursor: grab;
-  padding: 2px;
+  padding: 4px;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+.drag-handle:hover {
+  background: #f5f5f5;
 }
 .drag-handle:active { cursor: grabbing; }
 
@@ -329,56 +387,70 @@ const startGeneration = async () => {
   background: none;
   border: none;
   cursor: pointer;
-  color: #999;
-  padding: 2px;
-  transition: color 0.2s;
+  color: #8c8c8c;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s;
 }
-.icon-btn:hover { color: #FF4D4F; }
+.icon-btn:hover {
+  color: #ff4d4f;
+  background: #fff1f0;
+}
 
 /* 文本区域 - 核心 */
 .textarea-paper {
-  flex: 1; /* 占据剩余空间 */
+  flex: 1;
   width: 100%;
   border: none;
   background: transparent;
-  padding: 0;
-  font-size: 16px; /* 更大的字号 */
-  line-height: 1.7; /* 舒适行高 */
-  color: #333;
-  resize: none; /* 禁止手动拉伸，保持卡片整体感 */
+  padding: 12px;
+  font-size: 15px;
+  line-height: 1.8;
+  color: #262626;
+  resize: none;
   font-family: inherit;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
+  border-radius: 6px;
+  transition: background 0.2s;
 }
 
 .textarea-paper:focus {
   outline: none;
+  background: #fafafa;
+}
+
+.textarea-paper::placeholder {
+  color: #bfbfbf;
 }
 
 .word-count {
   text-align: right;
-  font-size: 11px;
-  color: #ddd;
+  font-size: 12px;
+  color: #bfbfbf;
   margin-top: auto;
+  padding-top: 8px;
 }
 
 /* 添加卡片 */
 .add-card-dashed {
-  border: 2px dashed #eee;
+  border: 2px dashed #e8e8e8;
   background: transparent;
   box-shadow: none;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  min-height: 360px;
-  color: #ccc;
-  transition: all 0.2s;
+  min-height: 320px;
+  color: #bfbfbf;
+  transition: all 0.3s;
+  border-radius: 12px;
 }
 
 .add-card-dashed:hover {
   border-color: var(--primary);
   color: var(--primary);
-  background: rgba(255, 36, 66, 0.02);
+  background: linear-gradient(135deg, rgba(255, 36, 66, 0.02) 0%, rgba(255, 36, 66, 0.05) 100%);
+  transform: translateY(-2px);
 }
 
 .add-content {
@@ -386,9 +458,9 @@ const startGeneration = async () => {
 }
 
 .add-icon {
-  font-size: 32px;
-  font-weight: 300;
-  margin-bottom: 8px;
+  font-size: 36px;
+  font-weight: 200;
+  margin-bottom: 10px;
 }
 
 /* 新增样式 - 保存状态 */
@@ -413,5 +485,133 @@ const startGeneration = async () => {
 .save-status.error {
   color: #ff4d4f;
   background: rgba(255, 77, 79, 0.1);
+}
+
+/* 流式进度条 */
+.streaming-progress-bar {
+  max-width: 1200px;
+  margin: 0 auto 24px;
+  padding: 12px 20px;
+  background: #f5f5f5;
+  color: #595959;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  border: 1px solid #e8e8e8;
+}
+
+/* 卡片状态样式（新增） */
+.outline-card.streaming-active {
+  border: 1px solid #1890ff;
+  box-shadow: none;
+}
+
+/* 流式状态徽章（新增） */
+.streaming-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: #e6f7ff;
+  color: #1890ff;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.streaming-dot {
+  width: 6px;
+  height: 6px;
+  background: #1890ff;
+  border-radius: 50%;
+}
+
+/* 打字机文本样式（新增） */
+.typewriter-text {
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.8;
+  color: #262626;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  margin: 0;
+  padding: 12px;
+  background: #fafafa;
+  border-radius: 6px;
+  border: 1px solid #f0f0f0;
+}
+
+.content-display {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.streaming-content {
+  flex: 1;
+  background: #fafafa;
+  border-radius: 6px;
+  padding: 12px;
+  border: 1px solid #f0f0f0;
+}
+
+/* 光标样式 */
+.cursor {
+  display: inline-block;
+  animation: blink 1s step-end infinite;
+  color: #1890ff;
+  font-weight: 600;
+  margin-left: 2px;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+/* 控件禁用状态（新增） */
+.card-controls.disabled {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+/* 全局禁用覆盖层（新增） */
+.outline-grid.disabled {
+  position: relative;
+}
+
+.outline-grid.disabled::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.6);
+  z-index: 100;
+  pointer-events: all;
+}
+
+.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* Spinner 动画 */
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #f3f3f3;
+  border-top: 2px solid var(--primary, #ff6b6b);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 </style>
