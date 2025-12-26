@@ -70,6 +70,15 @@
             </div>
             <button
               class="icon-btn"
+              :class="{ active: isEditingPage(page.index) }"
+              @click="toggleEditPage(page.index)"
+              title="编辑此页"
+              :disabled="store.isStreaming"
+            >
+               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+            </button>
+            <button
+              class="icon-btn"
               @click="deletePage(idx)"
               title="删除此页"
               :disabled="store.isStreaming"
@@ -81,25 +90,19 @@
 
         <!-- 内容显示区域（修改） -->
         <div class="content-display">
-          <!-- 正在流式：只读显示 + 打字机效果 -->
-          <div v-if="page.isStreaming" class="streaming-content">
-            <pre class="typewriter-text">
-              {{ page.streamingContent }}<span class="cursor">|</span>
-            </pre>
-          </div>
-
-          <!-- 流式完成或未开始：可编辑文本框 -->
-          <textarea
-            v-else
-            v-model="page.content"
-            class="textarea-paper"
-            placeholder="在此输入文案..."
-            @input="handleInput"
+          <ContentRenderer
+            :raw-content="page.content"
+            :is-streaming="page.isStreaming"
+            :is-editing="isEditingPage(page.index)"
+            :streaming-content="page.streamingContent"
+            :page-type="page.type"
+            @update:content="updatePageContent(page.index, $event)"
             @blur="handleBlur"
+            @start-edit="toggleEditPage(page.index)"
           />
         </div>
 
-        <div class="word-count">{{ (page.streamingContent || page.content).length }} 字</div>
+        <div class="word-count">{{ countBodyChars(page.streamingContent || page.content, page.type) }} 字</div>
       </div>
 
       <!-- 添加按钮卡片（流式中隐藏） -->
@@ -123,6 +126,8 @@
 import { ref, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGeneratorStore } from '../stores/generator'
+import ContentRenderer from '../components/ContentRenderer.vue'
+import { countBodyChars } from '../utils/contentParser'
 
 const router = useRouter()
 const store = useGeneratorStore()
@@ -136,6 +141,9 @@ const saveStatus = ref<{ type: 'saving' | 'saved' | 'error', message: string } |
 const isSaving = ref(false)
 const saveTimer = ref<number | null>(null)
 const hasUnsavedChanges = ref(false)
+
+// 编辑状态管理
+const editingPageIndex = ref<number | null>(null)
 
 const getPageTypeName = (type: string) => {
   const names = {
@@ -183,26 +191,21 @@ const performAutoSave = async () => {
   }
 }
 
-// 处理输入
-const handleInput = (event: Event) => {
-  const target = event.target as HTMLTextAreaElement
-
-  // 由于 v-model="page.content" 已经自动更新了 store.outline.pages 中的内容，
-  // 我们只需要触发同步更新 raw 文本即可
-  // 这里我们通过检测内容变化来确保 raw 文本同步
-  store.syncRawFromPages()
-
+// 处理输入（已移至 updatePageContent 中，保留此函数用于向后兼容）
+const handleInput = () => {
+  // 输入处理现在由 updatePageContent 方法处理
   hasUnsavedChanges.value = true
-  // 使用防抖保存
   debouncedSave()
 }
 
-// 处理失焦
+// 处理失焦（自动保存并退出编辑）
 const handleBlur = () => {
-  // 失焦时立即保存（如果有未保存的更改）
+  // 立即保存未保存的更改
   if (hasUnsavedChanges.value) {
     performAutoSave()
   }
+  // 退出编辑模式
+  stopEditing()
 }
 
 // 页面卸载前保存
@@ -265,6 +268,33 @@ const addPage = (type: 'cover' | 'content' | 'summary') => {
   nextTick(() => {
     window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })
   })
+}
+
+// 编辑状态管理方法
+const toggleEditPage = (pageIndex: number) => {
+  if (store.isStreaming) return
+
+  if (editingPageIndex.value === pageIndex) {
+    // 如果当前正在编辑此页，退出编辑
+    stopEditing()
+  } else {
+    // 否则进入编辑此页
+    editingPageIndex.value = pageIndex
+  }
+}
+
+const stopEditing = () => {
+  editingPageIndex.value = null
+}
+
+const isEditingPage = (pageIndex: number) => {
+  return editingPageIndex.value === pageIndex
+}
+
+const updatePageContent = (index: number, content: string) => {
+  store.updatePage(index, content)
+  hasUnsavedChanges.value = true
+  debouncedSave()
 }
 
 const goBack = () => {
@@ -336,7 +366,7 @@ const startGeneration = async () => {
 }
 
 .page-number {
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
   color: #bfbfbf;
   font-family: 'Inter', -apple-system, sans-serif;
@@ -344,7 +374,7 @@ const startGeneration = async () => {
 }
 
 .page-type {
-  font-size: 11px;
+  font-size: 12px;
   padding: 4px 10px;
   border-radius: 6px;
   font-weight: 600;
@@ -397,30 +427,15 @@ const startGeneration = async () => {
   background: #fff1f0;
 }
 
-/* 文本区域 - 核心 */
-.textarea-paper {
-  flex: 1;
-  width: 100%;
-  border: none;
-  background: transparent;
-  padding: 12px;
-  font-size: 15px;
-  line-height: 1.8;
-  color: #262626;
-  resize: none;
-  font-family: inherit;
-  margin-bottom: 12px;
-  border-radius: 6px;
-  transition: background 0.2s;
+/* 编辑按钮激活状态 */
+.card-controls .icon-btn.active {
+  color: #1890ff;
+  background: #e6f7ff;
 }
 
-.textarea-paper:focus {
-  outline: none;
-  background: #fafafa;
-}
-
-.textarea-paper::placeholder {
-  color: #bfbfbf;
+.card-controls .icon-btn.active:hover {
+  color: #40a9ff;
+  background: #bae7ff;
 }
 
 .word-count {
@@ -529,47 +544,11 @@ const startGeneration = async () => {
   border-radius: 50%;
 }
 
-/* 打字机文本样式（新增） */
-.typewriter-text {
-  font-family: inherit;
-  font-size: 15px;
-  line-height: 1.8;
-  color: #262626;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  margin: 0;
-  padding: 12px;
-  background: #fafafa;
-  border-radius: 6px;
-  border: 1px solid #f0f0f0;
-}
-
+/* 内容显示容器 */
 .content-display {
   flex: 1;
   display: flex;
   flex-direction: column;
-}
-
-.streaming-content {
-  flex: 1;
-  background: #fafafa;
-  border-radius: 6px;
-  padding: 12px;
-  border: 1px solid #f0f0f0;
-}
-
-/* 光标样式 */
-.cursor {
-  display: inline-block;
-  animation: blink 1s step-end infinite;
-  color: #1890ff;
-  font-weight: 600;
-  margin-left: 2px;
-}
-
-@keyframes blink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
 }
 
 /* 控件禁用状态（新增） */

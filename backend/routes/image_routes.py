@@ -50,7 +50,7 @@ def create_image_blueprint():
             task_id = data.get('task_id')
             full_outline = data.get('full_outline', '')
             user_topic = data.get('user_topic', '')
-
+            logger.info("图片生成请求：", data)  # 打印图片生成请求数据
             # 解析 base64 格式的用户参考图片
             user_images = _parse_base64_images(data.get('user_images', []))
 
