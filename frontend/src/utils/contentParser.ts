@@ -8,6 +8,11 @@ export interface ParsedTitle {
   subTitle?: string
 }
 
+export interface ParsedImageSuggestion {
+  bodyContent: string        // 正文内容（不含配图建议）
+  imageSuggestion: string | null  // 配图建议内容，如果没有则返回 null
+}
+
 /**
  * 清理 AI 生成的页面类型标记
  * @param content 原始文本内容
@@ -189,4 +194,48 @@ export function hasTitle(content: string, pageType?: string): boolean {
  */
 export function getCleanedContent(content: string): string {
   return cleanPageMarkers(content) || ''
+}
+
+/**
+ * 从正文中提取配图建议
+ * @param content 原始文本内容
+ * @param pageType 页面类型（cover/content/summary）
+ * @returns 解析后的正文和配图建议
+ */
+export function parseImageSuggestion(content: string, pageType?: string): ParsedImageSuggestion {
+  // 1. 先获取正文（已移除标题和AI标记）
+  const body = parseBody(content, pageType)
+
+  if (!body) {
+    return { bodyContent: '', imageSuggestion: null }
+  }
+
+  // 2. 查找配图建议标记（支持多种格式）
+  // 封面页使用"背景："，其他页面使用"配图建议："
+  const patterns = [
+    /\n配图建议[：:]\s*/i,    // 配图建议：
+    /\n背景[：:]\s*/i,        // 背景：
+  ]
+
+  let match: RegExpMatchArray | null = null
+
+  for (const pattern of patterns) {
+    const result = body.match(pattern)
+    if (result) {
+      match = result
+      break
+    }
+  }
+
+  if (!match) {
+    // 没有找到配图建议，返回全部内容
+    return { bodyContent: body, imageSuggestion: null }
+  }
+
+  // 3. 分离正文和配图建议
+  const index = body.indexOf(match[0])
+  const bodyContent = body.substring(0, index).trim()
+  const imageSuggestion = body.substring(index + match[0].length).trim()
+
+  return { bodyContent, imageSuggestion }
 }

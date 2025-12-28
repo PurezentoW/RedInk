@@ -47,7 +47,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, nextTick } from 'vue'
-import { parseTitle, parseBody, parseCoverTitles, type ParsedTitle } from '../utils/contentParser'
+import { parseTitle, parseBody, parseCoverTitles, parseImageSuggestion, type ParsedTitle } from '../utils/contentParser'
 
 interface Props {
   rawContent: string
@@ -100,7 +100,10 @@ const displayBody = computed(() => {
   const content = props.isStreaming && props.streamingContent
     ? props.streamingContent
     : props.rawContent
-  return parseBody(content, props.pageType)
+
+  // 解析配图建议并获取不含配图建议的正文
+  const parsed = parseImageSuggestion(content, props.pageType)
+  return parsed.bodyContent
 })
 
 // 事件处理

@@ -91,7 +91,7 @@
         <!-- 内容显示区域（修改） -->
         <div class="content-display">
           <ContentRenderer
-            :raw-content="page.content"
+            :raw-content="getContentForDisplay(page)"
             :is-streaming="page.isStreaming"
             :is-editing="isEditingPage(page.index)"
             :streaming-content="page.streamingContent"
@@ -100,6 +100,42 @@
             @blur="handleBlur"
             @start-edit="toggleEditPage(page.index)"
           />
+        </div>
+
+        <!-- 配图建议框（卡片底部） -->
+        <div v-if="getPageImageSuggestion(page)" class="image-suggestion-container">
+          <!-- 只读模式 -->
+          <div v-if="!isEditingSuggestion(page.index)" class="image-suggestion-box" @dblclick="toggleEditSuggestion(page.index)">
+            <div class="suggestion-header">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                <polyline points="21 15 16 10 5 21"></polyline>
+              </svg>
+              <span>{{ getSuggestionLabel(page.type) }}</span>
+            </div>
+            <div class="suggestion-content">{{ getPageImageSuggestion(page) }}</div>
+          </div>
+
+          <!-- 编辑模式 -->
+          <div v-else class="image-suggestion-edit-box">
+            <div class="suggestion-header">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                <polyline points="21 15 16 10 5 21"></polyline>
+              </svg>
+              <span>{{ getSuggestionLabel(page.type) }}</span>
+            </div>
+            <textarea
+              :value="getEditingSuggestion(page.index)"
+              class="suggestion-textarea"
+              @input="handleSuggestionInput(page.index, $event)"
+              @blur="handleSuggestionBlur(page.index)"
+              placeholder="描述想要的配图风格、元素、色调等..."
+              rows="3"
+            />
+          </div>
         </div>
 
         <div class="word-count">{{ countBodyChars(page.streamingContent || page.content, page.type) }} 字</div>
@@ -127,7 +163,7 @@ import { ref, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGeneratorStore } from '../stores/generator'
 import ContentRenderer from '../components/ContentRenderer.vue'
-import { countBodyChars } from '../utils/contentParser'
+import { countBodyChars, parseImageSuggestion, parseTitle, parseCoverTitles } from '../utils/contentParser'
 
 const router = useRouter()
 const store = useGeneratorStore()
@@ -145,6 +181,18 @@ const hasUnsavedChanges = ref(false)
 // 编辑状态管理
 const editingPageIndex = ref<number | null>(null)
 
+// 配图建议编辑状态（独立的页面索引）
+const editingSuggestionPage = ref<number | null>(null)
+
+// 配图建议编辑内容
+const editingSuggestions = ref<Record<number, string>>({})
+
+// 编辑时保存的原始完整内容
+const originalContentBeforeEdit = ref<string | null>(null)
+
+// 正文编辑时的临时内容
+const editingBodyContent = ref<string | null>(null)
+
 const getPageTypeName = (type: string) => {
   const names = {
     cover: '封面',
@@ -152,6 +200,169 @@ const getPageTypeName = (type: string) => {
     summary: '总结'
   }
   return names[type as keyof typeof names] || '内容'
+}
+
+// 获取页面的配图建议
+const getPageImageSuggestion = (page: any) => {
+  const content = page.streamingContent || page.content
+  const parsed = parseImageSuggestion(content, page.type)
+  return parsed.imageSuggestion
+}
+
+// 获取页面正文（不含配图建议）
+const getPageBodyWithoutSuggestion = (page: any) => {
+  const content = page.streamingContent || page.content
+  const parsed = parseImageSuggestion(content, page.type)
+  return parsed.bodyContent
+}
+
+// 获取用于显示的内容（标题 + 正文，不含配图建议）
+const getContentForDisplay = (page: any) => {
+  // 如果正在编辑正文，返回临时编辑内容
+  if (editingPageIndex.value === page.index && editingBodyContent.value !== null) {
+    return editingBodyContent.value
+  }
+
+  const content = page.streamingContent || page.content
+
+  // 解析配图建议，获取不含配图建议的正文
+  const parsed = parseImageSuggestion(content, page.type)
+  const bodyContent = parsed.bodyContent
+
+  // 根据页面类型重建内容
+  if (page.type === 'cover') {
+    // 封面页：主标题 + 副标题 + 正文
+    const coverTitles = parseCoverTitles(content)
+    let result = ''
+
+    if (coverTitles.mainTitle) {
+      const hasKeyword = content.includes('标题：') || content.includes('标题:')
+      if (hasKeyword) {
+        result = `标题：${coverTitles.mainTitle}\n`
+      } else {
+        result = `${coverTitles.mainTitle}\n`
+      }
+    }
+
+    if (coverTitles.subTitle) {
+      const hasKeyword = content.includes('副标题：') || content.includes('副标题:')
+      if (hasKeyword) {
+        result += `副标题：${coverTitles.subTitle}\n`
+      } else {
+        result += `${coverTitles.subTitle}\n`
+      }
+    }
+
+    result += bodyContent
+    return result
+  } else {
+    // 其他页面：标题 + 正文
+    const title = parseTitle(content, page.type)
+    if (title) {
+      return `${title}\n${bodyContent}`
+    }
+    return bodyContent
+  }
+}
+
+// 判断是否正在编辑配图建议
+const isEditingSuggestion = (pageIndex: number) => {
+  return editingSuggestionPage.value === pageIndex
+}
+
+// 切换配图建议编辑状态
+const toggleEditSuggestion = (pageIndex: number) => {
+  if (editingSuggestionPage.value === pageIndex) {
+    editingSuggestionPage.value = null
+  } else {
+    editingSuggestionPage.value = pageIndex
+  }
+}
+
+// 获取配图建议标签（封面显示"背景"，其他显示"配图建议"）
+const getSuggestionLabel = (pageType: string) => {
+  return pageType === 'cover' ? '背景' : '配图建议'
+}
+
+// 获取正在编辑的配图建议内容
+const getEditingSuggestion = (pageIndex: number) => {
+  const page = store.outline.pages[pageIndex]
+  const suggestion = getPageImageSuggestion(page)
+  // 如果已经有编辑中的值，使用编辑值；否则使用原始值
+  return editingSuggestions.value[pageIndex] ?? suggestion ?? ''
+}
+
+// 处理配图建议输入
+const handleSuggestionInput = (pageIndex: number, event: Event) => {
+  const target = event.target as HTMLTextAreaElement
+  editingSuggestions.value[pageIndex] = target.value
+
+  // 实时更新完整内容
+  updatePageContentWithSuggestion(pageIndex, target.value)
+}
+
+// 处理配图建议失焦
+const handleSuggestionBlur = (pageIndex: number) => {
+  // 清除编辑状态
+  delete editingSuggestions.value[pageIndex]
+  editingSuggestionPage.value = null
+  // 触发自动保存
+  debouncedSave()
+}
+
+// 更新页面内容（包含配图建议）
+const updatePageContentWithSuggestion = (pageIndex: number, newSuggestion: string) => {
+  const page = store.outline.pages[pageIndex]
+  const content = page.content || ''
+
+  // 获取不含配图建议的正文
+  const parsed = parseImageSuggestion(content, page.type)
+  const bodyContent = parsed.bodyContent
+
+  // 构建完整内容
+  let fullContent = ''
+
+  // 封面页需要特殊处理（主标题和副标题）
+  if (page.type === 'cover') {
+    const coverTitles = parseCoverTitles(content)
+
+    if (coverTitles.mainTitle) {
+      // 检查原始内容是否使用"标题："关键词
+      const hasKeyword = content.includes('标题：') || content.includes('标题:')
+      if (hasKeyword) {
+        fullContent = `标题：${coverTitles.mainTitle}\n`
+      } else {
+        fullContent = `${coverTitles.mainTitle}\n`
+      }
+    }
+
+    if (coverTitles.subTitle) {
+      const hasKeyword = content.includes('副标题：') || content.includes('副标题:')
+      if (hasKeyword) {
+        fullContent += `副标题：${coverTitles.subTitle}\n`
+      } else {
+        fullContent += `${coverTitles.subTitle}\n`
+      }
+    }
+  } else {
+    // 其他页面类型
+    const title = parseTitle(content, page.type)
+    if (title) {
+      fullContent = `${title}\n`
+    }
+  }
+
+  // 添加正文
+  fullContent += bodyContent
+
+  // 添加配图建议/背景
+  if (newSuggestion) {
+    const label = page.type === 'cover' ? '背景' : '配图建议'
+    const separator = fullContent && !fullContent.endsWith('\n') ? '\n' : ''
+    fullContent = `${fullContent}${separator}${label}：${newSuggestion}`
+  }
+
+  store.updatePage(pageIndex, fullContent)
 }
 
 // 防抖保存函数
@@ -200,10 +411,36 @@ const handleInput = () => {
 
 // 处理失焦（自动保存并退出编辑）
 const handleBlur = () => {
-  // 立即保存未保存的更改
+  // 如果正在编辑正文，失焦时需要恢复配图建议
+  if (editingPageIndex.value !== null && originalContentBeforeEdit.value) {
+    const index = editingPageIndex.value
+    const page = store.outline.pages[index]
+
+    // 从原始内容中提取配图建议
+    const originalParsed = parseImageSuggestion(originalContentBeforeEdit.value, page.type)
+
+    // 获取编辑后的内容（使用临时内容或原始内容）
+    const editedContent = editingBodyContent.value !== null
+      ? editingBodyContent.value
+      : getContentForDisplay(page)
+
+    // 如果原始内容有配图建议，需要添加回来
+    if (originalParsed.imageSuggestion) {
+      const label = page.type === 'cover' ? '背景' : '配图建议'
+      const separator = editedContent && !editedContent.endsWith('\n') ? '\n' : ''
+      const fullContent = `${editedContent}${separator}${label}：${originalParsed.imageSuggestion}`
+      store.updatePage(index, fullContent)
+    } else {
+      // 没有配图建议，直接保存编辑后的内容
+      store.updatePage(index, editedContent)
+    }
+  }
+
+  // 保存更改
   if (hasUnsavedChanges.value) {
     performAutoSave()
   }
+
   // 退出编辑模式
   stopEditing()
 }
@@ -280,11 +517,18 @@ const toggleEditPage = (pageIndex: number) => {
   } else {
     // 否则进入编辑此页
     editingPageIndex.value = pageIndex
+    // 保存原始完整内容
+    const page = store.outline.pages[pageIndex]
+    originalContentBeforeEdit.value = page.content || ''
+    // 初始化临时编辑内容
+    editingBodyContent.value = null
   }
 }
 
 const stopEditing = () => {
   editingPageIndex.value = null
+  originalContentBeforeEdit.value = null
+  editingBodyContent.value = null
 }
 
 const isEditingPage = (pageIndex: number) => {
@@ -292,9 +536,16 @@ const isEditingPage = (pageIndex: number) => {
 }
 
 const updatePageContent = (index: number, content: string) => {
-  store.updatePage(index, content)
-  hasUnsavedChanges.value = true
-  debouncedSave()
+  // 如果正在编辑正文，只更新临时内容，不更新 store
+  if (editingPageIndex.value === index) {
+    editingBodyContent.value = content
+    hasUnsavedChanges.value = true
+  } else {
+    // 不在编辑状态，直接更新 store
+    store.updatePage(index, content)
+    hasUnsavedChanges.value = true
+    debouncedSave()
+  }
 }
 
 const goBack = () => {
@@ -549,6 +800,78 @@ const startGeneration = async () => {
   flex: 1;
   display: flex;
   flex-direction: column;
+}
+
+/* 配图建议框（卡片底部） */
+.image-suggestion-container {
+  margin-top: 12px;
+  margin-bottom: 8px;
+}
+
+/* 配图建议框（只读） */
+.image-suggestion-box {
+  padding: 10px 12px;
+  background: linear-gradient(135deg, #fff7e6 0%, #ffe7ba 100%);
+  border: 1px solid #ffd591;
+  border-left: 3px solid #fa8c16;
+  border-radius: 8px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.image-suggestion-box:hover {
+  background: linear-gradient(135deg, #ffe7ba 0%, #ffd591 100%);
+}
+
+/* 配图建议编辑框 */
+.image-suggestion-edit-box {
+  padding: 12px;
+  background: linear-gradient(135deg, #fff7e6 0%, #ffe7ba 100%);
+  border: 1px solid #ffd591;
+  border-left: 3px solid #fa8c16;
+  border-radius: 8px;
+}
+
+.suggestion-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  color: #d46b08;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.suggestion-content {
+  color: #8c8c8c;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.suggestion-textarea {
+  width: 100%;
+  min-height: 60px;
+  padding: 8px;
+  border: 1px solid #ffd591;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.6);
+  color: #595959;
+  font-size: 12px;
+  line-height: 1.6;
+  resize: vertical;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+
+.suggestion-textarea:focus {
+  outline: none;
+  border-color: #fa8c16;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 2px rgba(250, 140, 22, 0.1);
 }
 
 /* 控件禁用状态（新增） */
