@@ -116,6 +116,11 @@ async function handleGenerate() {
       (chunk, accumulated) => {
         store.updateStreamingText(chunk, accumulated)
       },
+      // onSearchResults - 搜索结果回调
+      (results, count) => {
+        store.setSearchResults(results)
+        console.log(`🔍 收到 ${count} 条搜索结果`)
+      },
       // onComplete - 生成完成回调
       async (result) => {
         store.finishStreaming(result)

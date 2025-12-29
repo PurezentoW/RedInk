@@ -72,7 +72,14 @@ export async function generateOutlineStream(
   images?: File[],
   useSearch?: boolean,  // 联网搜索开关
   onText?: (chunk: string, accumulated: string) => void,
-  onComplete?: (result: { outline: string; pages: Page[]; has_images?: boolean }) => void,
+  onSearchResults?: (results: any[], count: number) => void,  // 搜索结果回调
+  onComplete?: (result: {
+    outline: string;
+    pages: Page[];
+    has_images?: boolean;
+    used_search?: boolean;
+    search_results?: any[]
+  }) => void,
   onError?: (error: string) => void,
   onStreamError?: (error: Error) => void
 ): Promise<void> {
@@ -139,6 +146,12 @@ export async function generateOutlineStream(
             case 'progress':
               // 可以用于显示"正在生成"状态
               break
+            case 'search_results':
+              // 搜索结果事件
+              if (onSearchResults) {
+                onSearchResults(data.results, data.count)
+              }
+              break
             case 'text':
               // 打字机效果核心
               if (onText) {
@@ -150,7 +163,9 @@ export async function generateOutlineStream(
                 onComplete({
                   outline: data.outline,
                   pages: data.pages,
-                  has_images: data.has_images
+                  has_images: data.has_images,
+                  used_search: data.used_search,
+                  search_results: data.search_results
                 })
               }
               break

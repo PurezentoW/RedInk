@@ -283,6 +283,7 @@ class OutlineService:
             logger.info(f"开始流式生成大纲: topic={topic[:50]}..., use_search={use_search}")
 
             # 执行搜索（如果启用）
+            search_results_list = []  # 保存搜索结果数据
             search_context = ""
             if use_search:
                 yield {
@@ -300,11 +301,21 @@ class OutlineService:
                 if search_result['success'] and search_result['has_research']:
                     # 构建搜索上下文
                     research_items = search_result['research_content']
+                    search_results_list = research_items  # 保存搜索结果数据
                     search_context = "\n\n搜索到的相关内容：\n"
                     for item in research_items:
                         search_context += f"- {item['title']}\n  {item['snippet']}\n  {item['content'][:500]}...\n\n"
 
                     logger.info(f"搜索完成，获得 {len(research_items)} 条相关内容")
+
+                    # 发送搜索结果事件
+                    yield {
+                        "event": "search_results",
+                        "data": {
+                            "results": research_items,
+                            "count": len(research_items)
+                        }
+                    }
                 else:
                     logger.warning("搜索未获得有效结果，使用普通生成模式")
 
@@ -383,7 +394,8 @@ class OutlineService:
                     "outline": accumulated_text,
                     "pages": pages,
                     "has_images": images is not None and len(images) > 0,
-                    "used_search": bool(search_context)  # 标记是否使用了搜索
+                    "used_search": bool(search_context),  # 标记是否使用了搜索
+                    "search_results": search_results_list if search_context else []  # 搜索结果数据
                 }
             }
 

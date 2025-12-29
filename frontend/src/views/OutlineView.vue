@@ -36,6 +36,57 @@
       <span>AI 正在创作中... ({{ store.outline.pages.length }} 页)</span>
     </div>
 
+    <!-- 搜索结果展示区域 -->
+    <div
+      v-if="shouldShowSearchResults"
+      class="search-results-container"
+    >
+      <div class="search-results-header" @click="searchResultsExpanded = !searchResultsExpanded">
+        <div class="search-results-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <span>网络搜索结果 ({{ store.searchResults.length }} 条)</span>
+        </div>
+        <button class="collapse-toggle-btn">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            :style="{ transform: searchResultsExpanded ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.3s' }"
+          >
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </button>
+      </div>
+
+      <!-- 结果列表 - 根据 expanded 状态显示/隐藏 -->
+      <div v-show="searchResultsExpanded" class="search-results-list">
+        <div
+          v-for="(result, index) in displayedSearchResults"
+          :key="index"
+          class="search-result-item"
+        >
+          <div class="result-header">
+            <a :href="result.url" target="_blank" rel="noopener noreferrer" class="result-title">
+              {{ result.title }}
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                <polyline points="15 3 21 3 21 9"></polyline>
+                <line x1="10" y1="14" x2="21" y2="3"></line>
+              </svg>
+            </a>
+            <span class="result-source">{{ result.source }}</span>
+          </div>
+          <div class="result-snippet">{{ result.snippet }}</div>
+        </div>
+      </div>
+    </div>
+
     <div class="outline-grid" :class="{ disabled: store.isStreaming }">
       <div
         v-for="(page, idx) in store.outline.pages"
@@ -159,7 +210,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGeneratorStore } from '../stores/generator'
 import ContentRenderer from '../components/ContentRenderer.vue'
@@ -171,6 +222,27 @@ const store = useGeneratorStore()
 // 原有状态
 const dragOverIndex = ref<number | null>(null)
 const draggedIndex = ref<number | null>(null)
+
+// 搜索结果相关状态
+const searchResultsExpanded = ref(true)  // 默认展开
+
+// 计算属性：是否应该显示搜索结果
+const shouldShowSearchResults = computed(() => {
+  return store.usedSearch && store.searchResults.length > 0
+})
+
+// 计算属性：展示的搜索结果
+const displayedSearchResults = computed(() => {
+  if (!store.usedSearch || store.searchResults.length === 0) {
+    return []
+  }
+  return store.searchResults
+})
+
+// 打开外部链接
+const openLink = (url: string) => {
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
 
 // 新增状态 - 自动保存相关
 const saveStatus = ref<{ type: 'saving' | 'saved' | 'error', message: string } | null>(null)
@@ -915,5 +987,117 @@ const startGeneration = async () => {
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+/* 搜索结果容器样式 - 与卡片风格一致 */
+.search-results-container {
+  max-width: 1350px;
+  margin: 0 auto 24px;
+  padding: 0 20px;
+  background: white;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.search-results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  background: #f9fafb;
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+  margin: 0 0 12px 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.search-results-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-color, #1f2937);
+}
+
+.collapse-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: white;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.collapse-toggle-btn:hover {
+  background: #f9fafb;
+  border-color: #d1d5db;
+}
+
+.search-results-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.search-result-item {
+  background: white;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  transition: all 0.2s;
+}
+
+.search-result-item:hover {
+  border-color: var(--primary, #ff6b6b);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+  gap: 12px;
+}
+
+.result-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #2563eb;
+  text-decoration: none;
+  line-height: 1.4;
+  flex: 1;
+}
+
+.result-title:hover {
+  text-decoration: underline;
+}
+
+.result-source {
+  font-size: 11px;
+  color: white;
+  white-space: nowrap;
+  background: var(--primary, #ff6b6b);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.result-snippet {
+  font-size: 13px;
+  color: #4b5563;
+  line-height: 1.6;
 }
 </style>

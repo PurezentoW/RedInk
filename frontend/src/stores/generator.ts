@@ -2,6 +2,14 @@ import { defineStore } from 'pinia'
 import type { Page } from '../api'
 import { parsePagesFromText, detectNewPages, determineStreamingPage } from '../utils/outlineParser'
 
+export interface SearchResult {
+  title: string
+  url: string
+  snippet: string
+  content: string
+  source: string
+}
+
 export interface GeneratedImage {
   index: number
   url: string
@@ -47,6 +55,10 @@ export interface GeneratorState {
 
   // 用户上传的图片（用于图片生成参考）
   userImages: File[]
+
+  // 搜索结果
+  searchResults: SearchResult[]
+  usedSearch: boolean
 }
 
 const STORAGE_KEY = 'generator-state'
@@ -75,7 +87,9 @@ function saveState(state: GeneratorState) {
       progress: state.progress,
       images: state.images,
       taskId: state.taskId,
-      recordId: state.recordId
+      recordId: state.recordId,
+      searchResults: state.searchResults,
+      usedSearch: state.usedSearch
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave))
   } catch (e) {
@@ -105,7 +119,9 @@ export const useGeneratorStore = defineStore('generator', {
       images: saved.images || [],
       taskId: saved.taskId || null,
       recordId: saved.recordId || null,
-      userImages: []  // 不从 localStorage 恢复
+      userImages: [],  // 不从 localStorage 恢复
+      searchResults: saved.searchResults || [],
+      usedSearch: saved.usedSearch || false
     }
   },
 
@@ -113,6 +129,12 @@ export const useGeneratorStore = defineStore('generator', {
     // 设置主题
     setTopic(topic: string) {
       this.topic = topic
+    },
+
+    // 设置搜索结果
+    setSearchResults(results: SearchResult[]) {
+      this.searchResults = results
+      this.usedSearch = true
     },
 
     // 开始流式生成（重构）
@@ -125,6 +147,10 @@ export const useGeneratorStore = defineStore('generator', {
       this.accumulatedText = ''
       this.outline.raw = ''
       this.outline.pages = []
+
+      // 清除旧的搜索结果
+      this.searchResults = []
+      this.usedSearch = false
     },
 
     // 更新流式文本（核心逻辑）
@@ -191,7 +217,13 @@ export const useGeneratorStore = defineStore('generator', {
     },
 
     // 完成流式生成（重构）
-    finishStreaming(result: { outline: string; pages: Page[]; has_images?: boolean }) {
+    finishStreaming(result: {
+      outline: string;
+      pages: Page[];
+      has_images?: boolean;
+      used_search?: boolean;
+      search_results?: any[]
+    }) {
       this.outline.raw = result.outline
       this.outline.pages = result.pages
 
@@ -202,6 +234,10 @@ export const useGeneratorStore = defineStore('generator', {
         page.content = page.content || page.streamingContent || ''
       })
 
+      // 保存搜索结果
+      this.searchResults = result.search_results || []
+      this.usedSearch = result.used_search || false
+
       this.isStreaming = false
       this.currentStreamingPageIndex = -1
       this.allPagesStreamed = true
@@ -209,6 +245,9 @@ export const useGeneratorStore = defineStore('generator', {
       this.stage = 'outline'
 
       console.log('🎉 所有页面流式生成完成')
+      if (this.usedSearch) {
+        console.log(`🔍 收到 ${this.searchResults.length} 条搜索结果`)
+      }
     },
 
     // 流式生成错误处理（新增）
@@ -388,6 +427,8 @@ export const useGeneratorStore = defineStore('generator', {
       this.taskId = null
       this.recordId = null
       this.userImages = []
+      this.searchResults = []
+      this.usedSearch = false
       // 清除 localStorage
       localStorage.removeItem(STORAGE_KEY)
     },
