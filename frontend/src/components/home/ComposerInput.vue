@@ -59,6 +59,23 @@
           </svg>
           <span v-if="uploadedImages.length > 0" class="badge-count">{{ uploadedImages.length }}</span>
         </label>
+
+        <!-- 联网搜索开关 -->
+        <label
+          class="search-toggle-wrapper"
+          :class="{ 'active': useSearch }"
+          title="启用联网搜索获取最新信息"
+          @click="toggleSearch"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            <line x1="8" y1="11" x2="14" y2="11"></line>
+          </svg>
+          <div class="toggle-switch" :class="{ active: useSearch }">
+            <div class="toggle-slider"></div>
+          </div>
+        </label>
       </div>
       <div class="toolbar-right">
         <button
@@ -96,6 +113,7 @@ interface UploadedImage {
 const props = defineProps<{
   modelValue: string
   loading: boolean
+  useSearch?: boolean  // 联网搜索开关状态
 }>()
 
 // 定义 Emits
@@ -103,6 +121,7 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
   (e: 'generate'): void
   (e: 'imagesChange', images: File[]): void
+  (e: 'toggleSearch', enabled: boolean): void  // 切换联网搜索
 }>()
 
 // 输入框引用
@@ -184,6 +203,13 @@ function removeImage(index: number) {
 function emitImagesChange() {
   const files = uploadedImages.value.map(img => img.file)
   emit('imagesChange', files)
+}
+
+/**
+ * 切换联网搜索
+ */
+function toggleSearch() {
+  emit('toggleSearch', !props.useSearch)
 }
 
 /**
@@ -397,5 +423,61 @@ defineExpose({
   to {
     transform: rotate(360deg);
   }
+}
+
+/* 联网搜索开关 */
+.search-toggle-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  height: 40px;
+  border-radius: 10px;
+  background: #f5f5f5;
+  cursor: pointer;
+  transition: all 0.2s;
+  user-select: none;
+}
+
+.search-toggle-wrapper:hover {
+  background: #eee;
+}
+
+.search-toggle-wrapper.active {
+  background: rgba(255, 36, 66, 0.08);
+  color: var(--primary, #ff2442);
+}
+
+.search-toggle-wrapper svg {
+  flex-shrink: 0;
+}
+
+.search-toggle-wrapper .toggle-switch {
+  width: 36px;
+  height: 20px;
+  background: #d1d5db;
+  border-radius: 10px;
+  position: relative;
+  transition: background 0.2s;
+}
+
+.search-toggle-wrapper .toggle-switch.active {
+  background: var(--primary, #ff2442);
+}
+
+.search-toggle-wrapper .toggle-slider {
+  width: 16px;
+  height: 16px;
+  background: white;
+  border-radius: 50%;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: transform 0.2s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.search-toggle-wrapper .toggle-switch.active .toggle-slider {
+  transform: translateX(16px);
 }
 </style>

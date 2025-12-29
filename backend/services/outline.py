@@ -132,11 +132,42 @@ class OutlineService:
     def generate_outline(
         self,
         topic: str,
-        images: Optional[List[bytes]] = None
+        images: Optional[List[bytes]] = None,
+        use_search: bool = False
     ) -> Dict[str, Any]:
         try:
-            logger.info(f"开始生成大纲: topic={topic[:50]}..., images={len(images) if images else 0}")
+            logger.info(f"开始生成大纲: topic={topic[:50]}..., images={len(images) if images else 0}, use_search={use_search}")
+
+            # 执行搜索（如果启用）
+            search_context = ""
+            if use_search:
+                from backend.services.search_service import SearchService
+                search_service = SearchService()
+                search_result = search_service.search(topic, max_results=5)
+
+                if search_result['success'] and search_result['has_research']:
+                    # 构建搜索上下文
+                    research_items = search_result['research_content']
+                    search_context = "\n\n搜索到的相关内容：\n"
+                    for item in research_items:
+                        search_context += f"- {item['title']}\n  {item['snippet']}\n  {item['content'][:500]}...\n\n"
+
+                    logger.info(f"搜索完成，获得 {len(research_items)} 条相关内容")
+                else:
+                    logger.warning("搜索未获得有效结果，使用普通生成模式")
+
+            # 构建 prompt
             prompt = self.prompt_template.format(topic=topic)
+
+            # 如果有搜索内容，添加到 prompt 中
+            if search_context:
+                prompt = f"""{topic}
+
+{search_context}
+
+基于以上搜索到的信息，请{self.prompt_template.split('用户主题：')[-1]}"""
+            else:
+                prompt = self.prompt_template.format(topic=topic)
 
             if images and len(images) > 0:
                 prompt += f"\n\n注意：用户提供了 {len(images)} 张参考图片，请在生成大纲时考虑这些图片的内容和风格。这些图片可能是产品图、个人照片或场景图，请根据图片内容来优化大纲，使生成的内容与图片相关联。"
@@ -232,10 +263,16 @@ class OutlineService:
     def generate_outline_stream(
         self,
         topic: str,
-        images: Optional[List[bytes]] = None
+        images: Optional[List[bytes]] = None,
+        use_search: bool = False
     ) -> Generator[Dict[str, Any], None, None]:
         """
         流式生成大纲（SSE事件流）
+
+        Args:
+            topic: 主题
+            images: 参考图片（可选）
+            use_search: 是否使用联网搜索
 
         Yields:
             SSE事件字典
@@ -243,8 +280,46 @@ class OutlineService:
             - data: 事件数据
         """
         try:
-            logger.info(f"开始流式生成大纲: topic={topic[:50]}...")
+            logger.info(f"开始流式生成大纲: topic={topic[:50]}..., use_search={use_search}")
+
+            # 执行搜索（如果启用）
+            search_context = ""
+            if use_search:
+                yield {
+                    "event": "progress",
+                    "data": {
+                        "status": "searching",
+                        "message": "正在搜索相关内容..."
+                    }
+                }
+
+                from backend.services.search_service import SearchService
+                search_service = SearchService()
+                search_result = search_service.search(topic, max_results=5)
+
+                if search_result['success'] and search_result['has_research']:
+                    # 构建搜索上下文
+                    research_items = search_result['research_content']
+                    search_context = "\n\n搜索到的相关内容：\n"
+                    for item in research_items:
+                        search_context += f"- {item['title']}\n  {item['snippet']}\n  {item['content'][:500]}...\n\n"
+
+                    logger.info(f"搜索完成，获得 {len(research_items)} 条相关内容")
+                else:
+                    logger.warning("搜索未获得有效结果，使用普通生成模式")
+
+            # 构建 prompt
             prompt = self.prompt_template.format(topic=topic)
+
+            # 如果有搜索内容，添加到 prompt 中
+            if search_context:
+                prompt = f"""{topic}
+
+{search_context}
+
+基于以上搜索到的信息，请{self.prompt_template.split('用户主题：')[-1]}"""
+            else:
+                prompt = self.prompt_template.format(topic=topic)
 
             if images and len(images) > 0:
                 prompt += f"\n\n注意：用户提供了 {len(images)} 张参考图片，请在生成大纲时考虑这些图片的内容和风格。这些图片可能是产品图、个人照片或场景图，请根据图片内容来优化大纲，使生成的内容与图片相关联。"
@@ -266,7 +341,7 @@ class OutlineService:
                 "event": "progress",
                 "data": {
                     "status": "starting",
-                    "message": "正在生成大纲..."
+                    "message": "正在生成大纲..." + ("（已使用搜索结果）" if search_context else "")
                 }
             }
 
@@ -307,7 +382,8 @@ class OutlineService:
                 "data": {
                     "outline": accumulated_text,
                     "pages": pages,
-                    "has_images": images is not None and len(images) > 0
+                    "has_images": images is not None and len(images) > 0,
+                    "used_search": bool(search_context)  # 标记是否使用了搜索
                 }
             }
 

@@ -45,9 +45,9 @@ def create_outline_blueprint():
 
         try:
             # 解析请求数据
-            topic, images = _parse_outline_request()
+            topic, images, use_search = _parse_outline_request()
 
-            log_request('/outline/stream', {'topic': topic, 'images': images})
+            log_request('/outline/stream', {'topic': topic, 'images': images, 'use_search': use_search})
 
             # 验证必填参数
             if not topic:
@@ -63,7 +63,7 @@ def create_outline_blueprint():
 
             def generate():
                 """SSE 事件生成器"""
-                for event in outline_service.generate_outline_stream(topic, images):
+                for event in outline_service.generate_outline_stream(topic, images, use_search):
                     event_type = event["event"]
                     event_data = event["data"]
 
@@ -112,9 +112,9 @@ def create_outline_blueprint():
 
         try:
             # 解析请求数据
-            topic, images = _parse_outline_request()
+            topic, images, use_search = _parse_outline_request()
 
-            log_request('/outline', {'topic': topic, 'images': images})
+            log_request('/outline', {'topic': topic, 'images': images, 'use_search': use_search})
 
             # 验证必填参数
             if not topic:
@@ -127,7 +127,7 @@ def create_outline_blueprint():
             # 调用大纲生成服务
             logger.info(f"🔄 开始生成大纲，主题: {topic[:50]}...")
             outline_service = get_outline_service()
-            result = outline_service.generate_outline(topic, images if images else None)
+            result = outline_service.generate_outline(topic, images if images else None, use_search)
 
             # 记录结果
             elapsed = time.time() - start_time
@@ -158,12 +158,13 @@ def _parse_outline_request():
     2. application/json - 用于 base64 图片
 
     返回：
-        tuple: (topic, images) - 主题和图片列表
+        tuple: (topic, images, use_search) - 主题、图片列表和是否使用搜索
     """
     # 检查是否是 multipart/form-data（带图片文件）
     if request.content_type and 'multipart/form-data' in request.content_type:
         topic = request.form.get('topic')
         images = []
+        use_search = request.form.get('use_search', 'false').lower() == 'true'
 
         # 获取上传的图片文件
         if 'images' in request.files:
@@ -173,12 +174,13 @@ def _parse_outline_request():
                     image_data = file.read()
                     images.append(image_data)
 
-        return topic, images
+        return topic, images, use_search
 
     # JSON 请求（无图片或 base64 图片）
     data = request.get_json()
     topic = data.get('topic')
     images = []
+    use_search = data.get('use_search', False)
 
     # 支持 base64 格式的图片
     images_base64 = data.get('images', [])
@@ -189,4 +191,4 @@ def _parse_outline_request():
                 img_b64 = img_b64.split(',')[1]
             images.append(base64.b64decode(img_b64))
 
-    return topic, images
+    return topic, images, use_search

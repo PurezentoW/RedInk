@@ -70,6 +70,7 @@ export async function generateOutline(
 export async function generateOutlineStream(
   topic: string,
   images?: File[],
+  useSearch?: boolean,  // 联网搜索开关
   onText?: (chunk: string, accumulated: string) => void,
   onComplete?: (result: { outline: string; pages: Page[]; has_images?: boolean }) => void,
   onError?: (error: string) => void,
@@ -83,9 +84,15 @@ export async function generateOutlineStream(
       const formData = new FormData()
       formData.append('topic', topic)
       images.forEach(file => formData.append('images', file))
+      if (useSearch !== undefined) {
+        formData.append('use_search', useSearch.toString())
+      }
       body = formData
     } else {
-      body = JSON.stringify({ topic })
+      body = JSON.stringify({
+        topic,
+        use_search: useSearch
+      })
     }
 
     const response = await fetch(`${API_BASE_URL}/outline/stream`, {

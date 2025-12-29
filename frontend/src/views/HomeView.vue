@@ -22,8 +22,10 @@
         ref="composerRef"
         v-model="topic"
         :loading="loading"
+        :useSearch="useSearch"
         @generate="handleGenerate"
         @imagesChange="handleImagesChange"
+        @toggleSearch="handleToggleSearch"
       />
     </div>
 
@@ -64,6 +66,9 @@ const loading = ref(false)
 const error = ref('')
 const composerRef = ref<InstanceType<typeof ComposerInput> | null>(null)
 
+// 联网搜索开关状态（默认关闭）
+const useSearch = ref(false)
+
 // 上传的图片文件
 const uploadedImageFiles = ref<File[]>([])
 
@@ -72,6 +77,13 @@ const uploadedImageFiles = ref<File[]>([])
  */
 function handleImagesChange(images: File[]) {
   uploadedImageFiles.value = images
+}
+
+/**
+ * 切换联网搜索
+ */
+function handleToggleSearch(enabled: boolean) {
+  useSearch.value = enabled
 }
 
 /**
@@ -99,6 +111,7 @@ async function handleGenerate() {
     await generateOutlineStream(
       topic.value.trim(),
       imageFiles.length > 0 ? imageFiles : undefined,
+      useSearch.value,  // 联网搜索开关
       // onText - 打字机效果核心回调
       (chunk, accumulated) => {
         store.updateStreamingText(chunk, accumulated)

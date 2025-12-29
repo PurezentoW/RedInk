@@ -1,0 +1,83 @@
+# 搜索服务商配置
+# 备份文件：search_providers.yaml.example
+
+# 当前激活的搜索服务商
+active_provider: duckduckgo
+
+# 搜索服务商列表
+providers:
+  # DuckDuckGo（免费，推荐作为默认）
+  duckduckgo:
+    type: duckduckgo
+    max_results: 5
+    timeout: 30
+    enabled: true
+
+  # Google Custom Search API
+  google_custom:
+    type: google_custom
+    api_key: ${GOOGLE_API_KEY}
+    search_engine_id: ${GOOGLE_SEARCH_ENGINE_ID}
+    max_results: 5
+    timeout: 30
+    enabled: false
+    params:
+      safe: active
+      gl: CN
+      hl: zh-CN
+
+  # Bing Search API
+  bing_search:
+    type: bing_search
+    api_key: ${BING_API_KEY}
+    market: zh-CN
+    max_results: 5
+    timeout: 30
+    enabled: false
+    safe_search: Moderate
+
+  # 百度搜索 API
+  baidu_search:
+    type: baidu_search
+    api_key: ${BAIDU_API_KEY}
+    max_results: 5
+    timeout: 30
+    enabled: false
+
+  # 混合搜索（综合多个引擎）
+  hybrid:
+    type: hybrid
+    engines:
+      - provider: duckduckgo
+        weight: 0.5
+      - provider: google_custom
+        weight: 0.3
+      - provider: bing_search
+        weight: 0.2
+    merge_strategy: score_based
+    max_total_results: 10
+    enabled: false
+
+# 搜索功能配置
+search_config:
+  # 自动搜索触发条件
+  auto_search:
+    enabled: false
+    min_confidence_score: 0.7
+
+  # 搜索结果处理
+  result_processing:
+    max_length: 3000
+    clean_html: true
+    extract_main_content: true
+
+  # 成本控制
+  cost_control:
+    daily_limit: 50
+    provider_switching: true
+
+  # 错误处理
+  fallback:
+    enabled: true
+    retry_attempts: 2
+    timeout_seconds: 45
