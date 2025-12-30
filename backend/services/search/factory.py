@@ -41,6 +41,14 @@ def get_search_provider(config: Dict[str, Any]) -> BaseSearchProvider:
             from backend.services.search.providers.hybrid import HybridSearchProvider
             return HybridSearchProvider(config)
 
+        elif provider_type == 'tavily':
+            from backend.services.search.providers.tavily import TavilySearchProvider
+            return TavilySearchProvider(config)
+
+        elif provider_type == 'exa':
+            from backend.services.search.providers.exa import ExaSearchProvider
+            return ExaSearchProvider(config)
+
         else:
             raise ValueError(f"不支持的搜索引擎类型: {provider_type}")
 

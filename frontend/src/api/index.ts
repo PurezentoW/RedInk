@@ -536,6 +536,10 @@ export interface Config {
     active_provider: string
     providers: Record<string, any>
   }
+  search: {
+    active_provider: string
+    providers: Record<string, any>
+  }
 }
 
 // 获取配置

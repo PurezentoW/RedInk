@@ -14,6 +14,7 @@ class Config:
 
     _image_providers_config = None
     _text_providers_config = None
+    _search_providers_config = None
 
     @classmethod
     def load_image_providers_config(cls):
@@ -81,6 +82,40 @@ class Config:
             )
 
         return cls._text_providers_config
+
+    @classmethod
+    def load_search_providers_config(cls):
+        """加载搜索服务商配置"""
+        if cls._search_providers_config is not None:
+            return cls._search_providers_config
+
+        config_path = Path(__file__).parent.parent / 'search_providers.yaml'
+        logger.debug(f"加载搜索服务商配置: {config_path}")
+
+        if not config_path.exists():
+            logger.warning(f"搜索配置文件不存在: {config_path}，使用默认配置")
+            cls._search_providers_config = {
+                'active_provider': 'duckduckgo',
+                'providers': {}
+            }
+            return cls._search_providers_config
+
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                cls._search_providers_config = yaml.safe_load(f) or {}
+            logger.debug(f"搜索配置加载成功: {list(cls._search_providers_config.get('providers', {}).keys())}")
+        except yaml.YAMLError as e:
+            logger.error(f"搜索配置文件 YAML 格式错误: {e}")
+            raise ValueError(
+                f"配置文件格式错误: search_providers.yaml\n"
+                f"YAML 解析错误: {e}\n"
+                "解决方案：\n"
+                "1. 检查 YAML 缩进是否正确（使用空格，不要用Tab）\n"
+                "2. 检查引号是否配对\n"
+                "3. 使用在线 YAML 验证器检查格式"
+            )
+
+        return cls._search_providers_config
 
     @classmethod
     def get_active_image_provider(cls):
@@ -151,3 +186,4 @@ class Config:
         logger.info("重新加载所有配置...")
         cls._image_providers_config = None
         cls._text_providers_config = None
+        cls._search_providers_config = None

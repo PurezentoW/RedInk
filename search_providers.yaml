@@ -1,0 +1,7 @@
+active_provider: ddg
+providers:
+  ddg:
+    enabled: true
+    max_results: 5
+    timeout: 30
+    type: duckduckgo

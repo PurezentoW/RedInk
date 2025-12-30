@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 CONFIG_DIR = Path(__file__).parent.parent.parent
 IMAGE_CONFIG_PATH = CONFIG_DIR / 'image_providers.yaml'
 TEXT_CONFIG_PATH = CONFIG_DIR / 'text_providers.yaml'
+SEARCH_CONFIG_PATH = CONFIG_DIR / 'search_providers.yaml'
 
 
 def create_config_blueprint():
@@ -51,6 +52,12 @@ def create_config_blueprint():
                 'providers': {}
             })
 
+            # 读取搜索配置
+            search_config = _read_config(SEARCH_CONFIG_PATH, {
+                'active_provider': 'duckduckgo',
+                'providers': {}
+            })
+
             return jsonify({
                 "success": True,
                 "config": {
@@ -64,6 +71,12 @@ def create_config_blueprint():
                         "active_provider": image_config.get('active_provider', ''),
                         "providers": prepare_providers_for_response(
                             image_config.get('providers', {})
+                        )
+                    },
+                    "search": {
+                        "active_provider": search_config.get('active_provider', 'duckduckgo'),
+                        "providers": prepare_providers_for_response(
+                            search_config.get('providers', {})
                         )
                     }
                 }
@@ -83,6 +96,7 @@ def create_config_blueprint():
         请求体：
         - image_generation: 图片生成配置（可选）
         - text_generation: 文本生成配置（可选）
+        - search: 搜索配置（可选）
 
         返回：
         - success: 是否成功
@@ -103,6 +117,13 @@ def create_config_blueprint():
                 _update_provider_config(
                     TEXT_CONFIG_PATH,
                     data['text_generation']
+                )
+
+            # 更新搜索配置
+            if 'search' in data:
+                _update_provider_config(
+                    SEARCH_CONFIG_PATH,
+                    data['search']
                 )
 
             # 清除配置缓存，确保下次使用时读取新配置
@@ -228,6 +249,8 @@ def _clear_config_cache():
     try:
         from backend.config import Config
         Config._image_providers_config = None
+        Config._text_providers_config = None
+        Config._search_providers_config = None
     except Exception:
         pass
 
@@ -297,6 +320,12 @@ def _test_provider_connection(provider_type: str, config: dict) -> dict:
 
     elif provider_type == 'image_api':
         return _test_image_api(config)
+
+    elif provider_type == 'tavily':
+        return _test_tavily(config)
+
+    elif provider_type == 'exa':
+        return _test_exa(config)
 
     else:
         raise ValueError(f"不支持的类型: {provider_type}")
@@ -426,3 +455,33 @@ def _check_response(result_text: str) -> dict:
             "success": True,
             "message": f"连接成功，但响应内容不符合预期: {result_text[:100]}"
         }
+
+
+def _test_tavily(config: dict) -> dict:
+    """测试 Tavily 连接"""
+    from tavily import TavilyClient
+
+    try:
+        client = TavilyClient(api_key=config['api_key'])
+        result = client.search("test", max_results=1)
+        return {
+            "success": True,
+            "message": "连接成功！Tavily 搜索服务可用"
+        }
+    except Exception as e:
+        raise Exception(f"Tavily 连接测试失败: {str(e)}")
+
+
+def _test_exa(config: dict) -> dict:
+    """测试 Exa 连接"""
+    from exa_py import Exa
+
+    try:
+        client = Exa(api_key=config['api_key'])
+        result = client.search("test", num_results=1)
+        return {
+            "success": True,
+            "message": "连接成功！Exa 搜索服务可用"
+        }
+    except Exception as e:
+        raise Exception(f"Exa 连接测试失败: {str(e)}")

@@ -64,6 +64,33 @@
           @test="testImageProviderInList"
         />
       </div>
+
+      <!-- 搜索配置 -->
+      <div class="card">
+        <div class="section-header">
+          <div>
+            <h2 class="section-title">搜索配置</h2>
+            <p class="section-desc">用于联网搜索功能，支持大纲生成时的信息检索</p>
+          </div>
+          <button class="btn btn-small" @click="openAddSearchModal">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            添加
+          </button>
+        </div>
+
+        <!-- 服务商列表表格 -->
+        <ProviderTable
+          :providers="searchConfig.providers"
+          :activeProvider="searchConfig.active_provider"
+          @activate="activateSearchProvider"
+          @edit="openEditSearchModal"
+          @delete="deleteSearchProvider"
+          @test="testSearchProviderInList"
+        />
+      </div>
     </div>
 
     <!-- 文本服务商弹窗 -->
@@ -92,6 +119,19 @@
       @test="testImageConnection"
       @update:formData="updateImageForm"
     />
+
+    <!-- 搜索服务商弹窗 -->
+    <SearchProviderModal
+      :visible="showSearchModal"
+      :isEditing="!!editingSearchProvider"
+      :formData="searchForm"
+      :testing="testingSearch"
+      :typeOptions="searchTypeOptions"
+      @close="closeSearchModal"
+      @save="saveSearchProvider"
+      @test="testSearchConnection"
+      @update:formData="updateSearchForm"
+    />
   </div>
 </template>
 
@@ -100,10 +140,12 @@ import { onMounted } from 'vue'
 import ProviderTable from '../components/settings/ProviderTable.vue'
 import ProviderModal from '../components/settings/ProviderModal.vue'
 import ImageProviderModal from '../components/settings/ImageProviderModal.vue'
+import SearchProviderModal from '../components/settings/SearchProviderModal.vue'
 import {
   useProviderForm,
   textTypeOptions,
-  imageTypeOptions
+  imageTypeOptions,
+  searchTypeOptions
 } from '../composables/useProviderForm'
 
 /**
@@ -112,6 +154,7 @@ import {
  * 功能：
  * - 管理文本生成服务商配置
  * - 管理图片生成服务商配置
+ * - 管理搜索服务商配置
  * - 测试 API 连接
  */
 
@@ -121,10 +164,12 @@ const {
   loading,
   testingText,
   testingImage,
+  testingSearch,
 
   // 配置数据
   textConfig,
   imageConfig,
+  searchConfig,
 
   // 文本服务商弹窗
   showTextModal,
@@ -135,6 +180,11 @@ const {
   showImageModal,
   editingImageProvider,
   imageForm,
+
+  // 搜索服务商弹窗
+  showSearchModal,
+  editingSearchProvider,
+  searchForm,
 
   // 方法
   loadConfig,
@@ -159,7 +209,18 @@ const {
   deleteImageProvider,
   testImageConnection,
   testImageProviderInList,
-  updateImageForm
+  updateImageForm,
+
+  // 搜索服务商方法
+  activateSearchProvider,
+  openAddSearchModal,
+  openEditSearchModal,
+  closeSearchModal,
+  saveSearchProvider,
+  deleteSearchProvider,
+  testSearchConnection,
+  testSearchProviderInList,
+  updateSearchForm
 } = useProviderForm()
 
 onMounted(() => {

@@ -55,6 +55,18 @@ export interface ImageProviderForm {
   _has_api_key: boolean
 }
 
+// 搜索服务商表单类型
+export interface SearchProviderForm {
+  name: string
+  type: string
+  api_key: string
+  api_key_masked: string
+  max_results: number
+  timeout: number
+  enabled: boolean
+  _has_api_key: boolean
+}
+
 // 文本服务商类型选项
 export const textTypeOptions = [
   { value: 'google_gemini', label: 'Google Gemini' },
@@ -67,6 +79,13 @@ export const imageTypeOptions = [
   { value: 'image_api', label: 'OpenAI 兼容接口' }
 ]
 
+// 搜索服务商类型选项
+export const searchTypeOptions = [
+  { value: 'duckduckgo', label: 'DuckDuckGo（免费，无需 API Key）' },
+  { value: 'tavily', label: 'Tavily AI（需要 API Key）' },
+  { value: 'exa', label: 'Exa.ai（需要 API Key）' }
+]
+
 /**
  * 服务商表单管理 Hook
  */
@@ -76,6 +95,7 @@ export function useProviderForm() {
   const saving = ref(false)
   const testingText = ref(false)
   const testingImage = ref(false)
+  const testingSearch = ref(false)
 
   // 配置数据
   const textConfig = ref<ProviderConfig>({
@@ -88,6 +108,11 @@ export function useProviderForm() {
     providers: {}
   })
 
+  const searchConfig = ref<ProviderConfig>({
+    active_provider: 'duckduckgo',
+    providers: {}
+  })
+
   // 文本服务商弹窗状态
   const showTextModal = ref(false)
   const editingTextProvider = ref<string | null>(null)
@@ -97,6 +122,11 @@ export function useProviderForm() {
   const showImageModal = ref(false)
   const editingImageProvider = ref<string | null>(null)
   const imageForm = ref<ImageProviderForm>(createEmptyImageForm())
+
+  // 搜索服务商弹窗状态
+  const showSearchModal = ref(false)
+  const editingSearchProvider = ref<string | null>(null)
+  const searchForm = ref<SearchProviderForm>(createEmptySearchForm())
 
   /**
    * 创建空的文本服务商表单
@@ -133,6 +163,22 @@ export function useProviderForm() {
   }
 
   /**
+   * 创建空的搜索服务商表单
+   */
+  function createEmptySearchForm(): SearchProviderForm {
+    return {
+      name: '',
+      type: 'duckduckgo',
+      api_key: '',
+      api_key_masked: '',
+      max_results: 5,
+      timeout: 30,
+      enabled: true,
+      _has_api_key: false
+    }
+  }
+
+  /**
    * 加载配置
    */
   async function loadConfig() {
@@ -145,6 +191,10 @@ export function useProviderForm() {
           providers: result.config.text_generation.providers
         }
         imageConfig.value = result.config.image_generation
+        searchConfig.value = {
+          active_provider: result.config.search?.active_provider || 'duckduckgo',
+          providers: result.config.search?.providers || {}
+        }
       } else {
         alert('加载配置失败: ' + (result.error || '未知错误'))
       }
@@ -165,7 +215,11 @@ export function useProviderForm() {
           active_provider: textConfig.value.active_provider,
           providers: textConfig.value.providers
         },
-        image_generation: imageConfig.value
+        image_generation: imageConfig.value,
+        search: {
+          active_provider: searchConfig.value.active_provider,
+          providers: searchConfig.value.providers
+        }
       }
 
       const result = await updateConfig(config)
@@ -500,16 +554,182 @@ export function useProviderForm() {
     imageForm.value = data
   }
 
+  // ==================== 搜索服务商操作 ====================
+
+  /**
+   * 激活搜索服务商
+   */
+  async function activateSearchProvider(name: string) {
+    searchConfig.value.active_provider = name
+    await autoSaveConfig()
+  }
+
+  /**
+   * 打开添加搜索服务商弹窗
+   */
+  function openAddSearchModal() {
+    editingSearchProvider.value = null
+    searchForm.value = createEmptySearchForm()
+    showSearchModal.value = true
+  }
+
+  /**
+   * 打开编辑搜索服务商弹窗
+   */
+  function openEditSearchModal(name: string, provider: any) {
+    editingSearchProvider.value = name
+    searchForm.value = {
+      name: name,
+      type: provider.type || 'duckduckgo',
+      api_key: '',
+      api_key_masked: provider.api_key_masked || '',
+      max_results: provider.max_results || 5,
+      timeout: provider.timeout || 30,
+      enabled: provider.enabled !== false,
+      _has_api_key: !!provider.api_key_masked
+    }
+    showSearchModal.value = true
+  }
+
+  /**
+   * 关闭搜索服务商弹窗
+   */
+  function closeSearchModal() {
+    showSearchModal.value = false
+    editingSearchProvider.value = null
+  }
+
+  /**
+   * 保存搜索服务商
+   */
+  async function saveSearchProvider() {
+    const name = editingSearchProvider.value || searchForm.value.name
+
+    if (!name) {
+      alert('请填写服务商名称')
+      return
+    }
+
+    if (!searchForm.value.type) {
+      alert('请选择服务商类型')
+      return
+    }
+
+    // DuckDuckGo 不需要 API Key
+    if (searchForm.value.type !== 'duckduckgo') {
+      if (!editingSearchProvider.value && !searchForm.value.api_key) {
+        alert('请填写 API Key')
+        return
+      }
+    }
+
+    const existingProvider = searchConfig.value.providers[name] || {}
+
+    const providerData: any = {
+      type: searchForm.value.type,
+      max_results: searchForm.value.max_results,
+      timeout: searchForm.value.timeout,
+      enabled: searchForm.value.enabled
+    }
+
+    // 如果填写了新的 API Key，使用新的；否则保留原有的
+    if (searchForm.value.api_key) {
+      providerData.api_key = searchForm.value.api_key
+    } else if (existingProvider.api_key) {
+      providerData.api_key = existingProvider.api_key
+    }
+
+    searchConfig.value.providers[name] = providerData
+
+    // 如果是第一个服务商，自动激活
+    if (!searchConfig.value.active_provider) {
+      searchConfig.value.active_provider = name
+    }
+
+    closeSearchModal()
+    await autoSaveConfig()
+  }
+
+  /**
+   * 删除搜索服务商
+   */
+  async function deleteSearchProvider(name: string) {
+    if (!confirm(`确定要删除服务商 "${name}" 吗？`)) {
+      return
+    }
+
+    delete searchConfig.value.providers[name]
+
+    // 如果删除的是当前激活的服务商，切换到默认
+    if (searchConfig.value.active_provider === name) {
+      const remaining = Object.keys(searchConfig.value.providers)
+      searchConfig.value.active_provider = remaining[0] || 'duckduckgo'
+    }
+
+    await autoSaveConfig()
+  }
+
+  /**
+   * 测试搜索服务商连接（弹窗中）
+   */
+  async function testSearchConnection() {
+    testingSearch.value = true
+    try {
+      const result = await testConnection({
+        type: searchForm.value.type,
+        provider_name: editingSearchProvider.value || undefined,
+        api_key: searchForm.value.api_key || undefined
+      })
+      if (result.success) {
+        alert('✅ ' + result.message)
+      } else {
+        alert('❌ ' + (result.error || result.message))
+      }
+    } catch (e: any) {
+      alert('❌ 连接测试失败: ' + String(e))
+    } finally {
+      testingSearch.value = false
+    }
+  }
+
+  /**
+   * 测试列表中的搜索服务商
+   */
+  async function testSearchProviderInList(name: string, provider: any) {
+    try {
+      const result = await testConnection({
+        type: provider.type,
+        provider_name: name
+      })
+      if (result.success) {
+        alert(`✅ ${name}: ${result.message}`)
+      } else {
+        alert(`❌ ${name}: ${result.error || result.message}`)
+      }
+    } catch (e: any) {
+      alert(`❌ ${name}: 连接测试失败`)
+    }
+  }
+
+  /**
+   * 更新搜索表单数据
+   */
+  function updateSearchForm(data: SearchProviderForm) {
+    searchForm.value = data
+  }
+
   return {
     // 状态
     loading,
     saving,
     testingText,
     testingImage,
+    testingSearch,
 
     // 配置数据
     textConfig,
     imageConfig,
+    searchConfig,
 
     // 文本服务商弹窗
     showTextModal,
@@ -520,6 +740,11 @@ export function useProviderForm() {
     showImageModal,
     editingImageProvider,
     imageForm,
+
+    // 搜索服务商弹窗
+    showSearchModal,
+    editingSearchProvider,
+    searchForm,
 
     // 方法
     loadConfig,
@@ -544,6 +769,17 @@ export function useProviderForm() {
     deleteImageProvider,
     testImageConnection,
     testImageProviderInList,
-    updateImageForm
+    updateImageForm,
+
+    // 搜索服务商方法
+    activateSearchProvider,
+    openAddSearchModal,
+    openEditSearchModal,
+    closeSearchModal,
+    saveSearchProvider,
+    deleteSearchProvider,
+    testSearchConnection,
+    testSearchProviderInList,
+    updateSearchForm
   }
 }

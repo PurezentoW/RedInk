@@ -1,8 +1,6 @@
 """搜索服务 - 集成多个搜索引擎"""
 import logging
-import yaml
-from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from backend.services.search.base import SearchQuery, SearchResult
 from backend.services.search.factory import get_search_provider
 
@@ -10,48 +8,41 @@ logger = logging.getLogger(__name__)
 
 
 class SearchService:
-    """搜索服务，提供统一的搜索接口"""
+    """搜索服务，提供统一的搜索接口（单例模式）"""
+
+    _instance = None
+    _config = None
+    active_provider_name = None
+    active_provider = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
 
     def __init__(self):
-        self.config = self._load_search_config()
-        self.active_provider_name = self.config.get('active_provider', 'duckduckgo')
-        self.active_provider = self._get_active_provider()
+        if self._config is None:
+            self.reload_config()
 
-    def _load_search_config(self) -> dict:
-        """加载搜索配置文件"""
-        config_path = Path(__file__).parent.parent / 'search_providers.yaml'
+    @classmethod
+    def reload_config(cls):
+        """重新加载配置"""
+        from backend.config import Config
+        cls._config = Config.load_search_providers_config()
+        cls.active_provider_name = cls._config.get('active_provider', 'duckduckgo')
+        cls.active_provider = cls._get_active_provider()
+        logger.info(f"搜索配置已重新加载: active={cls.active_provider_name}")
 
-        if config_path.exists():
-            try:
-                with open(config_path, 'r', encoding='utf-8') as f:
-                    config = yaml.safe_load(f) or {}
-                logger.info(f"搜索配置加载成功: active={config.get('active_provider')}")
-                return config
-            except Exception as e:
-                logger.error(f"搜索配置加载失败: {str(e)}")
-
-        # 默认配置
-        logger.warning("使用默认搜索配置")
-        return {
-            'active_provider': 'duckduckgo',
-            'providers': {
-                'duckduckgo': {
-                    'type': 'duckduckgo',
-                    'max_results': 5,
-                    'enabled': True
-                }
-            }
-        }
-
-    def _get_active_provider(self):
+    @classmethod
+    def _get_active_provider(cls):
         """获取当前激活的搜索引擎"""
-        providers_config = self.config.get('providers', {})
-        active_config = providers_config.get(self.active_provider_name, {})
+        providers_config = cls._config.get('providers', {})
+        active_config = providers_config.get(cls.active_provider_name, {})
 
         try:
             provider = get_search_provider(active_config)
             if not provider.is_available():
-                logger.warning(f"搜索引擎 {self.active_provider_name} 不可用")
+                logger.warning(f"搜索引擎 {cls.active_provider_name} 不可用")
                 return None
             return provider
         except Exception as e:

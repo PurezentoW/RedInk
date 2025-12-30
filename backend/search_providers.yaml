@@ -11,6 +11,26 @@ providers:
     timeout: 30
     enabled: true
 
+  # Tavily AI 示例配置（需要 API Key）
+  # 注册地址: https://tavily.com/
+  # 免费额度: 1000 次/月
+  tavily_main:
+    type: tavily
+    api_key: ""  # 在 Web 界面配置
+    max_results: 5
+    timeout: 30
+    enabled: false
+
+  # Exa.ai 示例配置（需要 API Key）
+  # 注册地址: https://exa.ai/
+  # 免费额度: 1000 次/月
+  exa_main:
+    type: exa
+    api_key: ""  # 在 Web 界面配置
+    max_results: 5
+    timeout: 30
+    enabled: false
+
 # 搜索功能配置
 search_config:
   # 搜索结果处理
