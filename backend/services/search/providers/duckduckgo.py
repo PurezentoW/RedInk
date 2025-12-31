@@ -3,6 +3,7 @@ import logging
 from typing import List, Dict, Any
 from ddgs import DDGS
 from backend.services.search.base import BaseSearchProvider, SearchResult, SearchQuery
+from backend.services.search.url_utils import get_website_name
 
 logger = logging.getLogger(__name__)
 
@@ -34,12 +35,13 @@ class DuckDuckGoSearchProvider(BaseSearchProvider):
                 return []
 
             for item in search_response:
+                url = item.get('link', '')
                 results.append(SearchResult(
                     title=item.get('title', ''),
-                    url=item.get('link', ''),
+                    url=url,
                     snippet=item.get('body', ''),
                     content='',  # 稍后获取完整内容
-                    source='DuckDuckGo',
+                    source=get_website_name(url),  # 使用网站名称而不是搜索引擎名称
                     score=1.0
                 ))
 

@@ -2,6 +2,7 @@
 import logging
 from typing import List, Dict, Any
 from backend.services.search.base import BaseSearchProvider, SearchResult, SearchQuery
+from backend.services.search.url_utils import get_website_name
 
 logger = logging.getLogger(__name__)
 
@@ -40,12 +41,13 @@ class ExaSearchProvider(BaseSearchProvider):
 
             results = []
             for item in response.results:
+                url = item.url
                 results.append(SearchResult(
                     title=item.title or '',
-                    url=item.url,
+                    url=url,
                     snippet=(item.text or '')[:500] if item.text else '',
                     content=item.text or '',
-                    source='Exa',
+                    source=get_website_name(url),  # 使用网站名称而不是搜索引擎名称
                     score=item.score or 1.0
                 ))
 

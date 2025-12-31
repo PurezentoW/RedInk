@@ -2,6 +2,7 @@
 import logging
 from typing import List, Dict, Any
 from backend.services.search.base import BaseSearchProvider, SearchResult, SearchQuery
+from backend.services.search.url_utils import get_website_name
 
 logger = logging.getLogger(__name__)
 
@@ -39,14 +40,19 @@ class TavilySearchProvider(BaseSearchProvider):
                 include_raw_content=False
             )
 
+            # 打印第一个结果的完整结构，帮助了解 Tavily 返回的字段
+            if response.get('results'):
+                logger.debug(f"Tavily API 响应示例: {response['results'][0]}")
+
             results = []
             for item in response.get('results', []):
+                url = item.get('url', '')
                 results.append(SearchResult(
                     title=item.get('title', ''),
-                    url=item.get('url', ''),
+                    url=url,
                     snippet=item.get('content', '')[:500],
                     content=item.get('content', ''),
-                    source='Tavily',
+                    source=get_website_name(url),  # 使用网站名称而不是搜索引擎名称
                     score=item.get('score', 1.0)
                 ))
 
