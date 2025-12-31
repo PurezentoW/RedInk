@@ -82,7 +82,7 @@
             </a>
             <span class="result-source">{{ result.source }}</span>
           </div>
-          <div class="result-snippet">{{ result.snippet }}</div>
+          <div class="result-snippet" :title="result.snippet">{{ result.snippet }}</div>
         </div>
       </div>
     </div>
@@ -210,7 +210,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGeneratorStore } from '../stores/generator'
 import ContentRenderer from '../components/ContentRenderer.vue'
@@ -224,7 +224,7 @@ const dragOverIndex = ref<number | null>(null)
 const draggedIndex = ref<number | null>(null)
 
 // 搜索结果相关状态
-const searchResultsExpanded = ref(true)  // 默认展开
+const searchResultsExpanded = ref(false)  // 默认收起，搜索时自动展开
 
 // 计算属性：是否应该显示搜索结果
 const shouldShowSearchResults = computed(() => {
@@ -237,6 +237,18 @@ const displayedSearchResults = computed(() => {
     return []
   }
   return store.searchResults
+})
+
+// 监听搜索状态，自动控制展开/收起
+watch(() => store.isStreaming, (isStreaming, wasStreaming) => {
+  // 当开始流式生成时，如果有搜索结果则展开
+  if (isStreaming && store.usedSearch && store.searchResults.length > 0) {
+    searchResultsExpanded.value = true
+  }
+  // 当流式生成完成时，自动收起
+  if (!isStreaming && wasStreaming) {
+    searchResultsExpanded.value = false
+  }
 })
 
 // 打开外部链接
@@ -369,16 +381,26 @@ const handleSuggestionInput = (pageIndex: number, event: Event) => {
   const target = event.target as HTMLTextAreaElement
   editingSuggestions.value[pageIndex] = target.value
 
+  // 标记为有未保存的更改
+  hasUnsavedChanges.value = true
+
   // 实时更新完整内容
   updatePageContentWithSuggestion(pageIndex, target.value)
 }
 
 // 处理配图建议失焦
 const handleSuggestionBlur = (pageIndex: number) => {
+  // 确保内容已保存
+  const suggestion = editingSuggestions.value[pageIndex]
+  if (suggestion !== undefined) {
+    updatePageContentWithSuggestion(pageIndex, suggestion)
+  }
+
   // 清除编辑状态
   delete editingSuggestions.value[pageIndex]
   editingSuggestionPage.value = null
-  // 触发自动保存
+
+  // 触发自动保存（1秒防抖）
   debouncedSave()
 }
 
@@ -1099,5 +1121,11 @@ const startGeneration = async () => {
   font-size: 13px;
   color: #4b5563;
   line-height: 1.6;
+  /* 限制最多显示 2 行，超出部分显示省略号 */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

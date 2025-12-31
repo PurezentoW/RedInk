@@ -212,10 +212,20 @@ export function parseImageSuggestion(content: string, pageType?: string): Parsed
 
   // 2. 查找配图建议标记（支持多种格式）
   // 封面页使用"背景："，其他页面使用"配图建议："
-  const patterns = [
-    /\n配图建议[：:]\s*/i,    // 配图建议：
-    /\n背景[：:]\s*/i,        // 背景：
-  ]
+  let patterns: RegExp[]
+
+  if (pageType === 'cover') {
+    // 封面：匹配"背景："（支持多种位置）
+    patterns = [
+      /(?:^|\n)背景[：:]\s*/i,      // 行首或换行后的"背景："
+      /背景[：:]\s*/i,               // 任意位置的"背景："（兜底）
+    ]
+  } else {
+    // 内容/总结：匹配"配图建议："（必须换行符）
+    patterns = [
+      /\n配图建议[：:]\s*/i,         // 换行后的"配图建议："
+    ]
+  }
 
   let match: RegExpMatchArray | null = null
 

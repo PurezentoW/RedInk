@@ -68,10 +68,14 @@ class SearchService:
         try:
             logger.info(f"开始搜索: {query[:50]}...")
 
+            # 从当前激活的 provider 配置中读取 timeout
+            provider_config = self._config.get('providers', {}).get(self.active_provider_name, {})
+            timeout = provider_config.get('timeout', 30)
+
             search_query = SearchQuery(
                 query=query,
                 max_results=max_results,
-                timeout=self.config.get('search_config', {}).get('fallback', {}).get('timeout_seconds', 30)
+                timeout=timeout
             )
 
             results = self.active_provider.search(search_query)
