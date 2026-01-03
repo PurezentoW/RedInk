@@ -194,21 +194,25 @@ const handleStartEdit = () => {
   flex: 1;
   width: 100%;
   min-height: 400px;
-  border: none;
-  background: transparent;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  background: rgba(250, 250, 250, 0.8);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
   padding: 12px;
   font-size: 15px;
   line-height: 1.8;
   color: #262626;
   resize: none;
   font-family: inherit;
-  border-radius: 6px;
-  transition: background 0.2s;
+  border-radius: 12px;
+  transition: all 0.3s ease;
 }
 
 .textarea-paper:focus {
   outline: none;
-  background: #fafafa;
+  background: rgba(255, 255, 255, 0.95);
+  border-color: rgba(255, 36, 66, 0.3);
+  box-shadow: 0 0 0 3px rgba(255, 36, 66, 0.1);
 }
 
 .textarea-paper::placeholder {
@@ -219,18 +223,18 @@ const handleStartEdit = () => {
 .readonly-content {
   flex: 1;
   padding: 12px;
-  border-radius: 6px;
+  border-radius: 12px;
   border: 1px solid transparent;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.3s ease;
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
 .readonly-content:hover {
-  background: #fafafa;
-  border-color: #f0f0f0;
+  background: rgba(249, 250, 251, 0.8);
+  border-color: rgba(0, 0, 0, 0.05);
 }
 
 .readonly-content:active {

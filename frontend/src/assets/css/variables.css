@@ -3,31 +3,72 @@
   --bg-body: #F4F5F7;
   --bg-sidebar: #FFFFFF;
   --bg-card: #FFFFFF;
-  
+
   --primary: #FF2442; /* 小红书红 */
   --primary-hover: #FF4D6A;
   --primary-active: #D91C36;
   --primary-light: #FFF0F2;
   --primary-fade: rgba(255, 36, 66, 0.08);
-  
-  --text-main: #333333;
-  --text-sub: #666666;
-  --text-secondary: #999999;
-  --text-placeholder: #CCCCCC;
-  
-  --border-color: #EEEEEE;
-  --border-hover: #E0E0E0;
-  
+
+  /* 状态色 */
+  --success: #52C41A;
+  --warning: #FA8C16;
+  --info: #1890FF;
+
+  /* 渐变色 */
+  --gradient-primary: linear-gradient(135deg, #FF2442 0%, #FF6B8A 100%);
+  --gradient-card: linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.7) 100%);
+  --gradient-glass: linear-gradient(135deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.1) 100%);
+
+  /* 玻璃态效果色 */
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.3);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+
+  /* 文字颜色 - 优化对比度 */
+  --text-main: #1F2937; /* slate-900 - 提升对比度 */
+  --text-sub: #4B5563; /* slate-600 - 提升可读性 */
+  --text-secondary: #9CA3AF; /* slate-400 */
+  --text-placeholder: #D1D5DB; /* slate-300 */
+
+  /* 边框颜色 */
+  --border-color: #E5E7EB; /* gray-200 */
+  --border-hover: #D1D5DB; /* gray-300 */
+
+  /* 间距系统 - 8px 基础单位 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* 圆角系统 */
   --radius-xl: 24px;
   --radius-lg: 16px;
   --radius-md: 12px;
   --radius-sm: 8px;
-  
+  --radius-xs: 6px;
+
+  /* 阴影系统 */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
   --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.06);
   --shadow-lg: 0 12px 48px rgba(0, 0, 0, 0.1);
   --shadow-hover: 0 16px 48px rgba(0, 0, 0, 0.08);
-  
+  --shadow-primary: 0 8px 24px rgba(255, 36, 66, 0.15);
+
+  /* 动画系统 */
+  --ease-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast: 150ms;
+  --duration-normal: 200ms;
+  --duration-slow: 300ms;
+
   --sidebar-width: 260px;
   --header-height: 64px;
 }
