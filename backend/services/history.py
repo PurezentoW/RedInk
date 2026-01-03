@@ -40,7 +40,8 @@ class HistoryService:
         self,
         topic: str,
         outline: Dict,
-        task_id: Optional[str] = None
+        task_id: Optional[str] = None,
+        copywriting: Optional[Dict] = None
     ) -> str:
         record_id = str(uuid.uuid4())
         now = datetime.now().isoformat()
@@ -51,6 +52,7 @@ class HistoryService:
             "created_at": now,
             "updated_at": now,
             "outline": outline,
+            "copywriting": copywriting or {},  # 新增：文案数据
             "images": {
                 "task_id": task_id,
                 "generated": []
@@ -94,6 +96,7 @@ class HistoryService:
         self,
         record_id: str,
         outline: Optional[Dict] = None,
+        copywriting: Optional[Dict] = None,  # 新增：文案参数
         images: Optional[Dict] = None,
         status: Optional[str] = None,
         thumbnail: Optional[str] = None
@@ -107,6 +110,9 @@ class HistoryService:
 
         if outline is not None:
             record["outline"] = outline
+
+        if copywriting is not None:  # 新增：更新文案
+            record["copywriting"] = copywriting
 
         if images is not None:
             record["images"] = images

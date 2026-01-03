@@ -14,17 +14,37 @@
         <button
           class="btn btn-secondary btn-hover-enhanced"
           @click="goBack"
-          :disabled="store.isStreaming"
+          :disabled="store.isStreaming || store.isCopywritingStreaming"
           style="background: white; border: 1px solid var(--border-color);"
         >
           上一步
         </button>
+
+        <!-- 生成文案按钮（可选） -->
         <button
           class="btn btn-primary btn-hover-enhanced"
-          @click="startGeneration"
-          :disabled="isSaving || store.isStreaming"
+          @click="generateCopywriting"
+          :disabled="store.isStreaming || store.isCopywritingStreaming"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"></path><line x1="16" y1="8" x2="2" y2="22"></line><line x1="17.5" y1="15" x2="9" y2="15"></line></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+          </svg>
+          {{ store.isCopywritingStreaming ? '生成中...' : '生成文案' }}
+        </button>
+
+        <!-- 开始生成图片按钮（可直接生成） -->
+        <button
+          class="btn btn-success btn-hover-enhanced"
+          @click="startGeneration"
+          :disabled="isSaving || store.isStreaming || store.isCopywritingStreaming"
+          style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;">
+            <path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"></path>
+            <line x1="16" y1="8" x2="2" y2="22"></line>
+            <line x1="17.5" y1="15" x2="9" y2="15"></line>
+          </svg>
           {{ isSaving ? '保存中...' : '开始生成图片' }}
         </button>
       </div>
@@ -34,6 +54,12 @@
     <div v-if="store.isStreaming" class="streaming-progress-bar unified-width">
       <div class="spinner"></div>
       <span>AI 正在创作中... ({{ store.outline.pages.length }} 页)</span>
+    </div>
+
+    <!-- 文案生成进度提示（新增） -->
+    <div v-if="store.isCopywritingStreaming" class="streaming-progress-bar unified-width" style="background: linear-gradient(135deg, #E6F7FF 0%, #BAE7FF 100%); border: 1px solid rgba(24, 144, 255, 0.2);">
+      <div class="spinner" style="border-color: #1890FF transparent #1890FF transparent;"></div>
+      <span style="color: #1890FF;">AI 正在创作文案...</span>
     </div>
 
     <!-- 搜索结果展示区域 -->
@@ -204,7 +230,18 @@
         </div>
       </div>
     </div>
-    
+
+    <!-- 文案卡片（新增） -->
+    <CopywritingCard
+      v-if="store.copywriting.title || store.isCopywritingStreaming"
+      :copywriting="store.copywriting"
+      :is-streaming="store.isCopywritingStreaming"
+      @update:copywriting="handleCopywritingUpdate"
+      @regenerate="generateCopywriting"
+      class="unified-width"
+      style="margin-bottom: var(--space-6);"
+    />
+
     <div style="height: 100px;"></div>
   </div>
 </template>
@@ -214,7 +251,9 @@ import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGeneratorStore } from '../stores/generator'
 import ContentRenderer from '../components/ContentRenderer.vue'
+import CopywritingCard from '../components/CopywritingCard.vue'
 import { countBodyChars, parseImageSuggestion, parseTitle, parseCoverTitles } from '../utils/contentParser'
+import { generateCopywritingStream } from '../api'
 
 const router = useRouter()
 const store = useGeneratorStore()
@@ -558,6 +597,52 @@ const handleBeforeUnload = (e: BeforeUnloadEvent) => {
     e.returnValue = ''
   }
 }
+
+// ========== 文案生成相关 ==========
+
+// 生成文案
+const generateCopywriting = async () => {
+  // 确保大纲已保存
+  if (!store.outline.raw || store.outline.pages.length === 0) {
+    alert('请先生成大纲')
+    return
+  }
+
+  store.startCopywritingStreaming()
+
+  try {
+    await generateCopywritingStream(
+      store.topic,
+      store.outline,
+      // onText
+      (chunk, accumulated) => {
+        store.updateCopywritingStreaming(chunk, accumulated)
+      },
+      // onComplete
+      (result) => {
+        store.finishCopywritingStreaming(result)
+        console.log('文案生成完成:', result)
+      },
+      // onError
+      (error) => {
+        console.error('文案生成失败:', error)
+        store.stopCopywritingStreaming()
+        alert('文案生成失败：' + error)
+      }
+    )
+  } catch (error) {
+    console.error('文案生成异常:', error)
+    store.stopCopywritingStreaming()
+    alert('文案生成异常，请重试')
+  }
+}
+
+// 更新文案
+const handleCopywritingUpdate = (data: any) => {
+  store.updateCopywriting(data)
+}
+
+// ========== 原有逻辑 ==========
 
 // 拖拽逻辑
 const onDragStart = (e: DragEvent, index: number) => {

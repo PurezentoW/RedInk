@@ -146,6 +146,72 @@ def create_outline_blueprint():
                 "error": f"大纲生成异常。\n错误详情: {error_msg}\n建议：检查后端日志获取更多信息"
             }), 500
 
+    @outline_bp.route('/copywriting/stream', methods=['POST'])
+    def generate_copywriting_stream():
+        """
+        流式生成文案（SSE）
+
+        请求格式：
+        - application/json
+          - topic: 原始主题
+          - outline: 大纲数据 {raw, pages}
+
+        返回：SSE 事件流
+        - progress: 开始生成
+        - text: 文本块（打字机效果）
+        - complete: 生成完成（包含 title, content, tags）
+        - error: 错误
+        """
+        try:
+            data = request.get_json()
+            topic = data.get('topic')
+            outline = data.get('outline')
+
+            if not topic or not outline:
+                logger.warning("文案生成请求缺少必要参数")
+                return jsonify({
+                    "success": False,
+                    "error": "参数错误：topic 和 outline 不能为空"
+                }), 400
+
+            log_request('/copywriting/stream', {'topic': topic})
+
+            logger.info(f"🔄 开始流式生成文案，主题: {topic[:50]}...")
+
+            from backend.services.copywriting import get_copywriting_service
+            copywriting_service = get_copywriting_service()
+
+            def generate():
+                """SSE 事件生成器"""
+                for event in copywriting_service.generate_copywriting_stream(
+                    topic=topic,
+                    outline=outline
+                ):
+                    event_type = event["event"]
+                    event_data = event["data"]
+
+                    # 格式化为 SSE 格式
+                    yield f"event: {event_type}\n"
+                    yield f"data: {json.dumps(event_data, ensure_ascii=False)}\n\n"
+
+            # 返回 SSE 流
+            return Response(
+                generate(),
+                mimetype='text/event-stream',
+                headers={
+                    'Cache-Control': 'no-cache',
+                    'X-Accel-Buffering': 'no',
+                }
+            )
+
+        except Exception as e:
+            log_error('/copywriting/stream', e)
+            error_msg = str(e)
+            return jsonify({
+                "success": False,
+                "error": f"文案生成异常。\n错误详情: {error_msg}\n建议：检查后端日志获取更多信息"
+            }), 500
+
     return outline_bp
 
 

@@ -59,6 +59,18 @@ export interface GeneratorState {
   // 搜索结果
   searchResults: SearchResult[]
   usedSearch: boolean
+
+  // 文案数据
+  copywriting: {
+    raw: string
+    title: string
+    content: string
+    tags: string[]
+  }
+
+  // 文案流式生成状态
+  isCopywritingStreaming: boolean
+  copywritingAccumulatedText: string
 }
 
 const STORAGE_KEY = 'generator-state'
@@ -121,7 +133,15 @@ export const useGeneratorStore = defineStore('generator', {
       recordId: saved.recordId || null,
       userImages: [],  // 不从 localStorage 恢复
       searchResults: saved.searchResults || [],
-      usedSearch: saved.usedSearch || false
+      usedSearch: saved.usedSearch || false,
+      copywriting: saved.copywriting || {
+        raw: '',
+        title: '',
+        content: '',
+        tags: []
+      },
+      isCopywritingStreaming: false,
+      copywritingAccumulatedText: ''
     }
   },
 
@@ -136,6 +156,75 @@ export const useGeneratorStore = defineStore('generator', {
       this.searchResults = results
       this.usedSearch = true
     },
+
+    // ========== 文案生成相关 ==========
+
+    // 开始文案生成
+    startCopywritingStreaming() {
+      this.isCopywritingStreaming = true
+      this.copywritingAccumulatedText = ''
+      this.copywriting = {
+        raw: '',
+        title: '',
+        content: '',
+        tags: []
+      }
+    },
+
+    // 更新文案流式文本
+    updateCopywritingStreaming(chunk: string, accumulated: string) {
+      this.copywritingAccumulatedText = accumulated
+    },
+
+    // 完成文案生成
+    finishCopywritingStreaming(result: {
+      raw: string
+      title: string
+      content: string
+      tags: string[]
+    }) {
+      this.copywriting = result
+      this.isCopywritingStreaming = false
+      this.copywritingAccumulatedText = ''
+      this.autoSaveCopywriting()
+    },
+
+    // 停止文案生成（错误处理）
+    stopCopywritingStreaming() {
+      this.isCopywritingStreaming = false
+      this.copywritingAccumulatedText = ''
+    },
+
+    // 更新文案
+    updateCopywriting(data: {
+      raw?: string
+      title?: string
+      content?: string
+      tags?: string[]
+    }) {
+      this.copywriting = { ...this.copywriting, ...data }
+      this.autoSaveCopywriting()
+    },
+
+    // 自动保存文案
+    async autoSaveCopywriting() {
+      if (!this.recordId) {
+        // 如果没有 recordId，先创建记录
+        await this.autoSaveDraft()
+        return
+      }
+
+      try {
+        const { updateHistory } = await import('../api')
+        await updateHistory(this.recordId, {
+          copywriting: this.copywriting
+        })
+        console.log('文案已保存到历史记录')
+      } catch (error) {
+        console.error('保存文案失败:', error)
+      }
+    },
+
 
     // 开始流式生成（重构）
     startStreaming(topic: string) {
@@ -429,13 +518,34 @@ export const useGeneratorStore = defineStore('generator', {
       this.userImages = []
       this.searchResults = []
       this.usedSearch = false
+      this.copywriting = {
+        raw: '',
+        title: '',
+        content: '',
+        tags: []
+      }
+      this.isCopywritingStreaming = false
+      this.copywritingAccumulatedText = ''
       // 清除 localStorage
       localStorage.removeItem(STORAGE_KEY)
     },
 
     // 保存当前状态
     saveToStorage() {
-      saveState(this)
+      // 只保存关键数据，不保存 userImages（文件对象无法序列化）
+      const toSave = {
+        stage: this.stage,
+        topic: this.topic,
+        outline: this.outline,
+        progress: this.progress,
+        images: this.images,
+        taskId: this.taskId,
+        recordId: this.recordId,
+        searchResults: this.searchResults,
+        usedSearch: this.usedSearch,
+        copywriting: this.copywriting  // 新增：保存文案数据
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave))
     },
 
     // 自动保存草稿到后端

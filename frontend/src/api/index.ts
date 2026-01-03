@@ -187,6 +187,95 @@ export async function generateOutlineStream(
   }
 }
 
+// 流式生成文案（SSE）
+export async function generateCopywritingStream(
+  topic: string,
+  outline: { raw: string; pages: Page[] },
+  onText?: (chunk: string, accumulated: string) => void,
+  onComplete?: (result: {
+    raw: string
+    title: string
+    content: string
+    tags: string[]
+  }) => void,
+  onError?: (error: string) => void,
+  onStreamError?: (error: Error) => void
+): Promise<void> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/copywriting/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ topic, outline })
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error('无法读取响应流')
+    }
+
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (!line.trim()) continue
+
+        const [eventLine, dataLine] = line.split('\n')
+        if (!eventLine || !dataLine) continue
+
+        const eventType = eventLine.replace('event: ', '').trim()
+        const eventData = dataLine.replace('data: ', '').trim()
+
+        try {
+          const data = JSON.parse(eventData)
+
+          switch (eventType) {
+            case 'text':
+              if (onText) {
+                onText(data.chunk, data.accumulated)
+              }
+              break
+            case 'complete':
+              if (onComplete) {
+                onComplete({
+                  raw: data.raw,
+                  title: data.title,
+                  content: data.content,
+                  tags: data.tags
+                })
+              }
+              break
+            case 'error':
+              if (onError) {
+                onError(data.error)
+              }
+              break
+          }
+        } catch (e) {
+          console.error('解析 SSE 数据失败:', e)
+        }
+      }
+    }
+  } catch (error) {
+    if (onStreamError) {
+      onStreamError(error as Error)
+    }
+  }
+}
+
 // 获取图片 URL（新格式：task_id/filename）
 // thumbnail 参数：true=缩略图（默认），false=原图
 export function getImageUrl(taskId: string, filename: string, thumbnail: boolean = true): string {
@@ -372,6 +461,12 @@ export async function updateHistory(
   recordId: string,
   data: {
     outline?: { raw: string; pages: Page[] }
+    copywriting?: {  // 新增：文案字段
+      raw: string
+      title: string
+      content: string
+      tags: string[]
+    }
     images?: { task_id: string | null; generated: string[] }
     status?: string
     thumbnail?: string

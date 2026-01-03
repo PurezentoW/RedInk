@@ -227,6 +227,20 @@ async function loadRecord(id: string) {
     store.setTopic(res.record.title)
     store.setOutline(res.record.outline.raw, res.record.outline.pages)
     store.recordId = res.record.id
+
+    // 加载或清空文案数据
+    if (res.record.copywriting && res.record.copywriting.title) {
+      store.copywriting = res.record.copywriting
+    } else {
+      // 如果历史记录没有文案，清空当前文案数据
+      store.copywriting = {
+        raw: '',
+        title: '',
+        content: '',
+        tags: []
+      }
+    }
+
     if (res.record.images.generated.length > 0) {
       store.taskId = res.record.images.task_id
       store.images = res.record.outline.pages.map((page, idx) => {
