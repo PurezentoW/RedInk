@@ -133,7 +133,7 @@ import {
   updateHistory,
   scanAllTasks
 } from '../api'
-import { useGeneratorStore } from '../stores/generator'
+import { useGeneratorStore, normalizeCopywriting } from '../stores/generator'
 
 // 引入组件
 import StatsOverview from '../components/history/StatsOverview.vue'
@@ -229,8 +229,10 @@ async function loadRecord(id: string) {
     store.recordId = res.record.id
 
     // 加载或清空文案数据
-    if (res.record.copywriting && res.record.copywriting.title) {
-      store.copywriting = res.record.copywriting
+    if (res.record.copywriting) {
+      // 规范化文案数据（向后兼容）
+      const normalized = normalizeCopywriting(res.record.copywriting)
+      store.copywriting = normalized
     } else {
       // 如果历史记录没有文案，清空当前文案数据
       store.copywriting = {

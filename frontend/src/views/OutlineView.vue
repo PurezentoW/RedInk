@@ -60,6 +60,9 @@
     <div v-if="store.isCopywritingStreaming" class="streaming-progress-bar unified-width" style="background: linear-gradient(135deg, #E6F7FF 0%, #BAE7FF 100%); border: 1px solid rgba(24, 144, 255, 0.2);">
       <div class="spinner" style="border-color: #1890FF transparent #1890FF transparent;"></div>
       <span style="color: #1890FF;">AI 正在创作文案...</span>
+      <span class="loading-dots">
+        <span>.</span><span>.</span><span>.</span>
+      </span>
     </div>
 
     <!-- 搜索结果展示区域 -->
@@ -236,6 +239,7 @@
       v-if="store.copywriting.title || store.isCopywritingStreaming"
       :copywriting="store.copywriting"
       :is-streaming="store.isCopywritingStreaming"
+      :accumulated-text="store.copywritingAccumulatedText"
       @update:copywriting="handleCopywritingUpdate"
       @regenerate="generateCopywriting"
       class="unified-width"
@@ -622,6 +626,19 @@ const generateCopywriting = async () => {
       (result) => {
         store.finishCopywritingStreaming(result)
         console.log('文案生成完成:', result)
+
+        // 自动滚动到文案卡片并添加高亮动画
+        setTimeout(() => {
+          const card = document.querySelector('.copywriting-card')
+          if (card) {
+            // 平滑滚动到卡片位置
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' })
+
+            // 添加高亮动画
+            card.classList.add('just-generated')
+            setTimeout(() => card.classList.remove('just-generated'), 1500)
+          }
+        }, 500)
       },
       // onError
       (error) => {
@@ -746,6 +763,36 @@ const startGeneration = async () => {
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 var(--space-6);
+}
+
+/* 加载动画点 */
+.loading-dots {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: 8px;
+}
+
+.loading-dots span {
+  animation: blink 1.4s infinite;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.loading-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.loading-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes blink {
+  0%, 100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 /* 玻璃态头部样式 */

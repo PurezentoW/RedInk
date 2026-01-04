@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import re
@@ -120,9 +121,16 @@ class CopywritingService:
 
     def _parse_copywriting(self, copywriting_text: str) -> Dict[str, Any]:
         """
-        解析 AI 返回的文案文本
+        解析 AI 返回的文案（支持多标题）
 
-        格式：
+        新JSON格式：
+        {
+          "titles": ["标题1", "标题2", "标题3"],
+          "copywriting": "正文内容...",
+          "tags": ["标签1", "标签2"]
+        }
+
+        旧格式（降级兼容）：
         标题：笔记标题
 
         正文：
@@ -131,20 +139,65 @@ class CopywritingService:
         标签：#标签1 #标签2 #标签3
         """
         result = {
-            "title": "",
+            "title": "",      # 当前选中的标题（默认第一个）
+            "titles": [],     # 所有备选标题数组
             "content": "",
             "tags": []
         }
 
+        # 尝试解析JSON格式（新格式）
+        try:
+            json_match = re.search(r'```json\s*(.+?)\s*```', copywriting_text, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(1)
+                data = json.loads(json_str)
+
+                # 提取标题数组
+                if "titles" in data and isinstance(data["titles"], list):
+                    result["titles"] = [t.strip() for t in data["titles"] if t.strip()]
+                    # 默认选中第一个标题
+                    result["title"] = result["titles"][0] if result["titles"] else ""
+                    logger.debug(f"JSON解析到 {len(result['titles'])} 个标题")
+                else:
+                    # 兼容旧JSON格式（只有单个title字段）
+                    if "title" in data:
+                        single_title = data["title"].strip()
+                        result["titles"] = [single_title]
+                        result["title"] = single_title
+
+                # 提取正文
+                result["content"] = data.get("copywriting", "")
+
+                # 提取标签
+                tags_data = data.get("tags", [])
+                if isinstance(tags_data, list):
+                    result["tags"] = tags_data
+                elif isinstance(tags_data, str):
+                    # 如果tags是字符串，尝试提取
+                    result["tags"] = re.findall(r'#(\S+)', tags_data)
+
+                logger.debug(f"文案JSON解析成功: title={result['title'][:30] if result['title'] else 'empty'}..., tags={result['tags']}")
+                return result
+
+        except json.JSONDecodeError as e:
+            logger.warning(f"JSON解析失败，降级到旧格式解析: {e}")
+        except Exception as e:
+            logger.warning(f"JSON解析异常，降级到旧格式解析: {e}")
+
+        # 降级：旧格式解析（正则匹配）
         # 提取标题
         title_match = re.search(r'标题[：:]\s*(.+?)(?:\n|$)', copywriting_text)
         if title_match:
-            result["title"] = title_match.group(1).strip()
+            single_title = title_match.group(1).strip()
+            result["titles"] = [single_title]
+            result["title"] = single_title
         else:
             # 备选模式：匹配第一行
             lines = copywriting_text.strip().split('\n')
             if lines:
-                result["title"] = lines[0].strip()
+                single_title = lines[0].strip()
+                result["titles"] = [single_title]
+                result["title"] = single_title
 
         # 提取正文
         content_match = re.search(
@@ -170,7 +223,7 @@ class CopywritingService:
             # 备选模式：在整个文本中搜索 #标签
             result["tags"] = re.findall(r'#(\S+)', copywriting_text)
 
-        logger.debug(f"文案解析完成: title={result['title'][:30]}..., tags={result['tags']}")
+        logger.debug(f"文案旧格式解析完成: title={result['title'][:30] if result['title'] else 'empty'}..., tags={result['tags']}")
         return result
 
     def generate_copywriting_stream(
@@ -249,6 +302,7 @@ class CopywritingService:
                 "data": {
                     "raw": accumulated_text,
                     "title": parsed_copywriting["title"],
+                    "titles": parsed_copywriting["titles"],
                     "content": parsed_copywriting["content"],
                     "tags": parsed_copywriting["tags"]
                 }
@@ -274,7 +328,7 @@ class CopywritingService:
         # 填充模板
         prompt = self.prompt_template.format(
             topic=topic,
-            outline_summary=outline_summary
+            outline=outline_summary
         )
 
         return prompt

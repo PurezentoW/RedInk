@@ -43,6 +43,20 @@
       </div>
     </div>
 
+    <!-- 流式生成中的原始文本显示 -->
+    <div v-if="isStreaming && accumulatedText" class="content-section streaming-text-section">
+      <div class="section-label">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+          <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+          <polyline points="13 2 13 9 20 9"></polyline>
+        </svg>
+        AI 生成中（实时预览）
+      </div>
+      <div class="display-content streaming-text">
+        <pre class="streaming-content">{{ accumulatedText }}</pre>
+      </div>
+    </div>
+
     <!-- 标题区域 -->
     <div class="content-section">
       <div class="section-label">
@@ -51,7 +65,10 @@
           <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
         </svg>
         笔记标题
+        <span v-if="hasMultipleTitles" class="title-count">({{ titleOptions.length }}个备选)</span>
       </div>
+
+      <!-- 编辑模式 -->
       <textarea
         v-if="isEditingTitle"
         ref="titleTextarea"
@@ -61,12 +78,36 @@
         @keydown.enter.prevent="finishEditTitle"
         placeholder="输入吸引人的标题..."
       />
+
+      <!-- 显示模式：单标题（向后兼容） -->
       <div
-        v-else
+        v-else-if="!hasMultipleTitles"
         class="display-content title-display"
         @dblclick="startEditTitle"
       >
         {{ displayTitle || '点击生成文案...' }}
+      </div>
+
+      <!-- 显示模式：多标题选择 -->
+      <div v-else class="title-options-container">
+        <div
+          v-for="(titleOption, index) in titleOptions"
+          :key="index"
+          class="title-option"
+          :class="{ 'is-selected': titleOption === displayTitle }"
+          @click="selectTitle(titleOption)"
+          @dblclick="startEditTitle()"
+        >
+          <!-- 选中标记 -->
+          <div v-if="titleOption === displayTitle" class="check-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+          </div>
+
+          <!-- 标题文本 -->
+          <div class="title-text">{{ titleOption }}</div>
+        </div>
       </div>
     </div>
 
@@ -138,7 +179,8 @@ import { ref, computed, nextTick } from 'vue'
 
 interface CopywritingData {
   raw: string
-  title: string
+  title: string       // 当前选中的标题
+  titles?: string[]   // 所有备选标题（新增，可选）
   content: string
   tags: string[]
 }
@@ -146,6 +188,7 @@ interface CopywritingData {
 interface Props {
   copywriting: CopywritingData
   isStreaming: boolean
+  accumulatedText?: string  // 新增：流式累积文本
 }
 
 const props = defineProps<Props>()
@@ -163,6 +206,22 @@ const editingContent = ref('')
 const titleTextarea = ref<HTMLTextAreaElement | null>(null)
 
 // 计算属性
+// 标题选项数组（向后兼容）
+const titleOptions = computed(() => {
+  // 优先使用 titles 数组
+  if (props.copywriting?.titles && props.copywriting.titles.length > 0) {
+    return props.copywriting.titles
+  }
+  // 降级：单标题模式
+  if (props.copywriting?.title) {
+    return [props.copywriting.title]
+  }
+  return []
+})
+
+// 是否有多标题
+const hasMultipleTitles = computed(() => titleOptions.value.length > 1)
+
 const displayTitle = computed(() => props.copywriting?.title || '')
 const displayContent = computed(() => props.copywriting?.content || '')
 const displayTags = computed(() => props.copywriting?.tags || [])
@@ -178,6 +237,17 @@ const contentParagraphs = computed(() => {
 })
 
 // 方法
+// 选择标题（多标题模式）
+const selectTitle = (selectedTitle: string) => {
+  if (props.isStreaming) return
+  if (selectedTitle === displayTitle.value) return
+
+  emit('update:copywriting', {
+    ...props.copywriting,
+    title: selectedTitle
+  })
+}
+
 const startEditTitle = () => {
   if (props.isStreaming) return
   editingTitle.value = displayTitle.value
@@ -188,9 +258,18 @@ const startEditTitle = () => {
 const finishEditTitle = () => {
   isEditingTitle.value = false
   if (editingTitle.value !== displayTitle.value) {
+    // 更新 titles 数组中对应的标题
+    const currentTitles = [...titleOptions.value]
+    const currentIndex = currentTitles.indexOf(displayTitle.value)
+
+    if (currentIndex !== -1) {
+      currentTitles[currentIndex] = editingTitle.value
+    }
+
     emit('update:copywriting', {
       ...props.copywriting,
-      title: editingTitle.value
+      title: editingTitle.value,
+      titles: currentTitles
     })
   }
 }
@@ -263,6 +342,23 @@ const showCopySuccess = () => {
 </script>
 
 <style scoped>
+/* 高亮动画 */
+@keyframes highlight-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 36, 66, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(255, 36, 66, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 36, 66, 0);
+  }
+}
+
+.copywriting-card.just-generated {
+  animation: highlight-pulse 1.5s ease-out;
+}
+
 .copywriting-card {
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 240, 242, 0.5) 100%);
   border: 1px solid rgba(255, 36, 66, 0.1);
@@ -411,6 +507,117 @@ const showCopySuccess = () => {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 12px;
+}
+
+/* 标题数量徽章 */
+.title-count {
+  margin-left: 8px;
+  padding: 2px 8px;
+  background: linear-gradient(135deg, #FFF0F2 0%, #FFD4D9 100%);
+  color: #FF2442;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* 流式文本区域 */
+.streaming-text-section {
+  background: linear-gradient(135deg, rgba(24, 144, 255, 0.05) 0%, rgba(24, 144, 255, 0.02) 100%);
+  border: 1px solid rgba(24, 144, 255, 0.15);
+  border-radius: 12px;
+}
+
+.streaming-text {
+  background: rgba(24, 144, 255, 0.03);
+  border: 1px dashed rgba(24, 144, 255, 0.3);
+  font-family: 'Courier New', 'Monaco', monospace;
+}
+
+.streaming-content {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-sub);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* 多标题容器 */
+.title-options-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 单个标题选项 */
+.title-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 14px 18px;
+  background: rgba(255, 255, 255, 0.6);
+  border: 2px solid rgba(0, 0, 0, 0.04);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  min-height: 52px;
+}
+
+/* 未选中状态 */
+.title-option:not(.is-selected) {
+  opacity: 0.75;
+}
+
+.title-option:not(.is-selected):hover {
+  opacity: 1;
+  border-color: rgba(255, 36, 66, 0.2);
+  background: rgba(255, 255, 255, 0.8);
+  transform: translateX(4px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+/* 选中状态 */
+.title-option.is-selected {
+  border-color: #FF2442;
+  background: linear-gradient(135deg, rgba(255, 240, 242, 0.9) 0%, rgba(255, 255, 255, 0.95) 100%);
+  box-shadow: 0 4px 16px rgba(255, 36, 66, 0.12);
+}
+
+.title-option.is-selected:hover {
+  transform: translateX(2px);
+  box-shadow: 0 6px 20px rgba(255, 36, 66, 0.18);
+}
+
+/* 勾选标记图标 */
+.check-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-right: 12px;
+  color: #FF2442;
+  flex-shrink: 0;
+}
+
+/* 标题文本 */
+.title-text {
+  flex: 1;
+  font-size: 16px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.title-option.is-selected .title-text {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.title-option:not(.is-selected) .title-text {
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--text-sub);
 }
 
 .display-content {

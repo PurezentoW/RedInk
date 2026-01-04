@@ -195,6 +195,7 @@ export async function generateCopywritingStream(
   onComplete?: (result: {
     raw: string
     title: string
+    titles?: string[]
     content: string
     tags: string[]
   }) => void,
@@ -253,6 +254,7 @@ export async function generateCopywritingStream(
                 onComplete({
                   raw: data.raw,
                   title: data.title,
+                  titles: data.titles,
                   content: data.content,
                   tags: data.tags
                 })

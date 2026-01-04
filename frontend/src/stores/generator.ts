@@ -18,6 +18,34 @@ export interface GeneratedImage {
   retryable?: boolean
 }
 
+/**
+ * 规范化文案数据（向后兼容）
+ * 处理旧的单标题数据，转换为新的多标题格式
+ */
+export function normalizeCopywriting(data: any): {
+  raw: string
+  title: string
+  titles?: string[]
+  content: string
+  tags: string[]
+} {
+  // 如果没有 titles 数组或为空，从 title 字段生成单元素数组
+  if (!data.titles || data.titles.length === 0) {
+    if (data.title) {
+      data.titles = [data.title]
+    } else {
+      data.titles = []
+    }
+  }
+
+  // 如果没有 title 字段但有 titles 数组，默认选中第一个
+  if (!data.title && data.titles.length > 0) {
+    data.title = data.titles[0]
+  }
+
+  return data
+}
+
 export interface GeneratorState {
   // 当前阶段
   stage: 'input' | 'outline' | 'generating' | 'result'
@@ -63,7 +91,8 @@ export interface GeneratorState {
   // 文案数据
   copywriting: {
     raw: string
-    title: string
+    title: string       // 当前选中的标题
+    titles?: string[]   // 所有备选标题数组（新增，可选）
     content: string
     tags: string[]
   }
@@ -180,10 +209,13 @@ export const useGeneratorStore = defineStore('generator', {
     finishCopywritingStreaming(result: {
       raw: string
       title: string
+      titles?: string[]
       content: string
       tags: string[]
     }) {
-      this.copywriting = result
+      // 规范化数据（向后兼容）
+      const normalized = normalizeCopywriting(result)
+      this.copywriting = normalized
       this.isCopywritingStreaming = false
       this.copywritingAccumulatedText = ''
       this.autoSaveCopywriting()
@@ -199,6 +231,7 @@ export const useGeneratorStore = defineStore('generator', {
     updateCopywriting(data: {
       raw?: string
       title?: string
+      titles?: string[]
       content?: string
       tags?: string[]
     }) {
