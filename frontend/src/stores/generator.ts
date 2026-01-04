@@ -65,6 +65,11 @@ export interface GeneratorState {
   allPagesStreamed: boolean          // 所有页面是否都已完成流式
   accumulatedText: string            // 累积的完整文本（用于解析页面）
 
+  // AI修改相关（新增）
+  isModifying: boolean
+  modifyInstruction: string
+  modifyAccumulatedText: string
+
   // 生成进度
   progress: {
     current: number
@@ -152,6 +157,9 @@ export const useGeneratorStore = defineStore('generator', {
       currentStreamingPageIndex: -1,
       allPagesStreamed: false,
       accumulatedText: '',
+      isModifying: false,
+      modifyInstruction: '',
+      modifyAccumulatedText: '',
       progress: saved.progress || {
         current: 0,
         total: 0,
@@ -283,58 +291,79 @@ export const useGeneratorStore = defineStore('generator', {
       const newPages = parsePagesFromText(accumulated)
       const oldPages = this.outline.pages
 
-      // 检测新增页面
-      const newIndices = detectNewPages(oldPages, newPages)
+      // ⚠️ 修复：如果是修改模式，直接替换页面列表而不是增量添加
+      // 修改模式下的特征：oldPages 已经被清空（在 startModifying 中）
+      if (this.isModifying || oldPages.length === 0) {
+        // 直接使用新解析的页面列表
+        this.outline.pages = newPages.map((page, index) => ({
+          ...page,
+          isStreaming: true,
+          isStreamComplete: false,
+          streamingContent: page.content,
+          content: '' // 先清空，等流式完成再设置
+        }))
 
-      // 添加新页面到 store
-      for (const index of newIndices) {
-        const newPage = newPages[index]
-        newPage.isStreaming = true
-        newPage.isStreamComplete = false
-        newPage.streamingContent = ''
+        // 更新当前流式页面索引为最后一个页面
+        if (newPages.length > 0) {
+          this.currentStreamingPageIndex = newPages.length - 1
+        }
 
-        this.outline.pages.push(newPage)
+        console.log(`🔄 修改模式：更新页面列表，共 ${newPages.length} 页`)
+      } else {
+        // 原有的大纲生成模式：增量添加页面
+        const newIndices = detectNewPages(oldPages, newPages)
 
-        console.log(`📄 新增页面 ${index}: ${newPage.type}, 内容:`, newPage.content.substring(0, 20))
-      }
+        // 添加新页面到 store
+        for (const index of newIndices) {
+          const newPage = newPages[index]
+          newPage.isStreaming = true
+          newPage.isStreamComplete = false
+          newPage.streamingContent = ''
 
-      // 从累积文本中提取所有页面内容
-      const pageTexts = accumulated.split(/<page>/i).map(text => text.trim()).filter(text => text)
+          this.outline.pages.push(newPage)
 
-      // 更新所有已存在页面的流式内容
-      this.outline.pages.forEach((page, idx) => {
-        if (idx < pageTexts.length) {
-          // 使用对应的页面文本更新流式内容
-          page.streamingContent = pageTexts[idx]
+          console.log(`📄 新增页面 ${index}: ${newPage.type}, 内容:`, newPage.content.substring(0, 20))
+        }
 
-          // 如果该页面正在流式中
-          if (page.isStreaming) {
-            this.currentStreamingPageIndex = idx
+        // 从累积文本中提取所有页面内容
+        const pageTexts = accumulated.split(/<page>/i).map(text => text.trim()).filter(text => text)
 
-            // 检查是否是该页面的最后一段（检测是否有下一个页面）
-            const isLastPage = idx === pageTexts.length - 1
+        // 更新所有已存在页面的流式内容
+        this.outline.pages.forEach((page, idx) => {
+          if (idx < pageTexts.length) {
+            // 使用对应的页面文本更新流式内容
+            page.streamingContent = pageTexts[idx]
 
-            if (!isLastPage) {
-              // 不是最后一页，说明该页面已完成
-              page.isStreamComplete = true
-              page.isStreaming = false
-              page.content = page.streamingContent
-              console.log(`✅ 页面 ${idx} 流式完成`)
+            // 如果该页面正在流式中
+            if (page.isStreaming) {
+              this.currentStreamingPageIndex = idx
+
+              // 检查是否是该页面的最后一段（检测是否有下一个页面）
+              const isLastPage = idx === pageTexts.length - 1
+
+              if (!isLastPage) {
+                // 不是最后一页，说明该页面已完成
+                page.isStreamComplete = true
+                page.isStreaming = false
+                page.content = page.streamingContent
+                console.log(`✅ 页面 ${idx} 流式完成`)
+              }
             }
           }
+        })
+
+        // 确定当前应该流式显示的页面
+        const streamingIndex = determineStreamingPage(
+          this.outline.pages,
+          this.currentStreamingPageIndex
+        )
+
+        if (streamingIndex !== -1) {
+          const page = this.outline.pages[streamingIndex]
+          // 确保流式内容是最新的
+          const pageTexts = accumulated.split(/<page>/i).map(text => text.trim()).filter(text => text)
+          page.streamingContent = pageTexts[streamingIndex] || ''
         }
-      })
-
-      // 确定当前应该流式显示的页面
-      const streamingIndex = determineStreamingPage(
-        this.outline.pages,
-        this.currentStreamingPageIndex
-      )
-
-      if (streamingIndex !== -1) {
-        const page = this.outline.pages[streamingIndex]
-        // 确保流式内容是最新的
-        page.streamingContent = pageTexts[streamingIndex] || ''
       }
     },
 
@@ -622,6 +651,94 @@ export const useGeneratorStore = defineStore('generator', {
     async manualSaveDraft() {
       await this.autoSaveDraft()
       return !!this.recordId
+    },
+
+    // ========== AI修改相关 ==========
+
+    // 开始修改
+    startModifying(instruction: string) {
+      this.isModifying = true
+      this.modifyInstruction = instruction
+      this.modifyAccumulatedText = ''
+      // 清空当前大纲，准备接收新内容
+      this.outline.raw = ''
+      this.outline.pages = []
+      this.currentStreamingPageIndex = -1
+      this.allPagesStreamed = false
+    },
+
+    // 更新修改流式文本（复用现有逻辑）
+    updateModifyingText(chunk: string, accumulated: string) {
+      this.modifyAccumulatedText = accumulated
+      // 复用现有的 updateStreamingText 逻辑
+      this.updateStreamingText(chunk, accumulated)
+    },
+
+    // 完成修改
+    finishModifying(result: { outline: string; pages: Page[]; summary: string }) {
+      this.outline.raw = result.outline
+      this.outline.pages = result.pages
+
+      // 标记所有页面为完成状态
+      this.outline.pages.forEach(page => {
+        page.isStreamComplete = true
+        page.isStreaming = false
+        page.content = page.content || page.streamingContent || ''
+      })
+
+      this.isModifying = false
+      this.modifyInstruction = ''
+      this.modifyAccumulatedText = ''
+      this.currentStreamingPageIndex = -1
+      this.allPagesStreamed = true
+
+      // 保存版本到历史
+      this.saveOutlineVersion(result.summary)
+
+      // 自动保存
+      this.autoSaveDraft()
+
+      console.log('🎉 AI修改完成')
+    },
+
+    // 取消修改
+    cancelModifying() {
+      this.isModifying = false
+      this.modifyInstruction = ''
+      this.modifyAccumulatedText = ''
+      this.currentStreamingPageIndex = -1
+    },
+
+    // 保存大纲版本到历史
+    async saveOutlineVersion(summary: string) {
+      if (!this.recordId) {
+        console.log('⚠️ 没有recordId，跳过版本保存')
+        return
+      }
+
+      try {
+        const response = await fetch(`/api/history/${this.recordId}/versions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            outline: {
+              raw: this.outline.raw,
+              pages: this.outline.pages
+            },
+            instruction: this.modifyInstruction,
+            summary: summary
+          })
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          console.log('✅ 版本已保存:', data.version_id)
+        } else {
+          console.error('❌ 版本保存失败:', await response.text())
+        }
+      } catch (error) {
+        console.error('❌ 版本保存异常:', error)
+      }
     }
   }
 })

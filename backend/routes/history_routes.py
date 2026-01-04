@@ -401,6 +401,131 @@ def create_history_blueprint():
                 "error": f"下载失败。\n错误详情: {error_msg}"
             }), 500
 
+    # ==================== 大纲版本管理 ====================
+
+    @history_bp.route('/history/<record_id>/versions', methods=['GET'])
+    def get_outline_versions(record_id):
+        """
+        获取大纲版本列表
+
+        路径参数：
+        - record_id: 历史记录ID
+
+        查询参数：
+        - limit: 返回数量限制（默认10）
+
+        返回：
+        - success: 是否成功
+        - versions: 版本列表（按时间倒序）
+        """
+        try:
+            limit = int(request.args.get('limit', 10))
+
+            history_service = get_history_service()
+            versions = history_service.get_outline_versions(record_id, limit)
+
+            return jsonify({
+                "success": True,
+                "versions": versions
+            }), 200
+
+        except Exception as e:
+            logger.error(f"获取版本列表失败: {e}")
+            error_msg = str(e)
+            return jsonify({
+                "success": False,
+                "error": f"获取版本列表失败。\n错误详情: {error_msg}"
+            }), 500
+
+    @history_bp.route('/history/<record_id>/versions/<version_id>', methods=['GET'])
+    def get_outline_version(record_id, version_id):
+        """
+        获取单个大纲版本详情
+
+        路径参数：
+        - record_id: 历史记录ID
+        - version_id: 版本ID
+
+        返回：
+        - success: 是否成功
+        - version: 版本数据
+        """
+        try:
+            history_service = get_history_service()
+            version = history_service.get_outline_version(record_id, version_id)
+
+            if not version:
+                return jsonify({
+                    "success": False,
+                    "error": f"版本不存在：{version_id}\n可能原因：版本已被删除或ID错误"
+                }), 404
+
+            return jsonify({
+                "success": True,
+                "version": version
+            }), 200
+
+        except Exception as e:
+            logger.error(f"获取版本详情失败: {e}")
+            error_msg = str(e)
+            return jsonify({
+                "success": False,
+                "error": f"获取版本详情失败。\n错误详情: {error_msg}"
+            }), 500
+
+    @history_bp.route('/history/<record_id>/versions', methods=['POST'])
+    def create_outline_version(record_id):
+        """
+        创建大纲版本
+
+        Args:
+            record_id: 历史记录ID
+
+        Request Body:
+            outline: 大纲数据 {raw: str, pages: []}
+            instruction: 修改指令
+            summary: 修改摘要
+
+        Returns:
+            JSON response containing:
+            - success: 是否成功
+            - version_id: 创建的版本ID
+        """
+        try:
+            data = request.get_json()
+            outline = data.get('outline')
+            instruction = data.get('instruction', '')
+            summary = data.get('summary', '')
+
+            if not outline:
+                return jsonify({
+                    "success": False,
+                    "error": "参数错误：outline 不能为空"
+                }), 400
+
+            history_service = get_history_service()
+            version_id = history_service.save_outline_version(
+                record_id,
+                outline,
+                instruction,
+                summary
+            )
+
+            logger.info(f"创建大纲版本成功: record_id={record_id}, version_id={version_id}")
+
+            return jsonify({
+                "success": True,
+                "version_id": version_id
+            }), 200
+
+        except Exception as e:
+            logger.error(f"创建版本失败: {e}")
+            error_msg = str(e)
+            return jsonify({
+                "success": False,
+                "error": f"创建版本失败。\n错误详情: {error_msg}"
+            }), 500
+
     return history_bp
 
 

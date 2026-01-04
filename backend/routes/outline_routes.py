@@ -212,6 +212,101 @@ def create_outline_blueprint():
                 "error": f"文案生成异常。\n错误详情: {error_msg}\n建议：检查后端日志获取更多信息"
             }), 500
 
+    @outline_bp.route('/outline/modify/stream', methods=['POST'])
+    def modify_outline_stream():
+        """
+        流式修改大纲（SSE）
+
+        请求格式：
+        - application/json
+          - topic: 原始主题
+          - current_outline: {raw: str, pages: []}
+          - instruction: 修改指令
+
+        返回：SSE 事件流
+        - progress: 开始修改
+        - text: 文本块（打字机效果）
+        - complete: 修改完成
+        - error: 错误
+        """
+        start_time = time.time()
+
+        try:
+            # 解析请求数据
+            data = request.get_json()
+
+            if not data:
+                logger.warning("大纲修改请求缺少JSON数据")
+                return jsonify({
+                    "success": False,
+                    "error": "参数错误：请求体不能为空。\n请提供topic、current_outline和instruction参数。"
+                }), 400
+
+            topic = data.get('topic')
+            current_outline = data.get('current_outline')
+            instruction = data.get('instruction')
+
+            # 验证必填参数
+            if not topic:
+                logger.warning("大纲修改请求缺少 topic 参数")
+                return jsonify({
+                    "success": False,
+                    "error": "参数错误：topic 不能为空。"
+                }), 400
+
+            if not current_outline:
+                logger.warning("大纲修改请求缺少 current_outline 参数")
+                return jsonify({
+                    "success": False,
+                    "error": "参数错误：current_outline 不能为空。"
+                }), 400
+
+            if not instruction:
+                logger.warning("大纲修改请求缺少 instruction 参数")
+                return jsonify({
+                    "success": False,
+                    "error": "参数错误：instruction 不能为空。"
+                }), 400
+
+            log_request('/outline/modify/stream', {
+                'topic': topic,
+                'instruction': instruction,
+                'current_pages': len(current_outline.get('pages', []))
+            })
+
+            # 调用大纲修改服务
+            logger.info(f"🔄 开始流式修改大纲，主题: {topic[:50]}..., 指令: {instruction[:50]}...")
+            from backend.services.outline_modify import get_outline_modify_service
+            modify_service = get_outline_modify_service()
+
+            def generate():
+                """SSE 事件生成器"""
+                for event in modify_service.modify_outline_stream(topic, current_outline, instruction):
+                    event_type = event["event"]
+                    event_data = event["data"]
+
+                    # 格式化为 SSE 格式
+                    yield f"event: {event_type}\n"
+                    yield f"data: {json.dumps(event_data, ensure_ascii=False)}\n\n"
+
+            # 返回 SSE 流
+            return Response(
+                generate(),
+                mimetype='text/event-stream',
+                headers={
+                    'Cache-Control': 'no-cache',
+                    'X-Accel-Buffering': 'no',
+                }
+            )
+
+        except Exception as e:
+            log_error('/outline/modify/stream', e)
+            error_msg = str(e)
+            return jsonify({
+                "success": False,
+                "error": f"大纲修改异常。\n错误详情: {error_msg}\n建议：检查后端日志获取更多信息"
+            }), 500
+
     return outline_bp
 
 

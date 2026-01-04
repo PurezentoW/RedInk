@@ -129,6 +129,8 @@ const handleStartEdit = () => {
   border-radius: 6px;
   padding: 12px;
   border: 1px solid #f0f0f0;
+  max-height: 400px;
+  overflow-y: auto;
 }
 
 /* 打字机文本样式 */
@@ -193,7 +195,9 @@ const handleStartEdit = () => {
 .textarea-paper {
   flex: 1;
   width: 100%;
-  min-height: 400px;
+  min-height: 200px;
+  max-height: 400px;
+  overflow-y: auto;
   border: 1px solid rgba(0, 0, 0, 0.05);
   background: rgba(250, 250, 250, 0.8);
   backdrop-filter: blur(5px);
@@ -202,7 +206,7 @@ const handleStartEdit = () => {
   font-size: 15px;
   line-height: 1.8;
   color: #262626;
-  resize: none;
+  resize: vertical;
   font-family: inherit;
   border-radius: 12px;
   transition: all 0.3s ease;
@@ -230,6 +234,8 @@ const handleStartEdit = () => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  max-height: 400px;
+  overflow-y: auto;
 }
 
 .readonly-content:hover {
@@ -269,5 +275,32 @@ const handleStartEdit = () => {
   white-space: pre-wrap;
   word-wrap: break-word;
   flex: 1;
+  overflow-y: auto;
+}
+
+/* 美化滚动条 */
+.streaming-content::-webkit-scrollbar,
+.textarea-paper::-webkit-scrollbar,
+.readonly-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.streaming-content::-webkit-scrollbar-track,
+.textarea-paper::-webkit-scrollbar-track,
+.readonly-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.streaming-content::-webkit-scrollbar-thumb,
+.textarea-paper::-webkit-scrollbar-thumb,
+.readonly-content::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 3px;
+}
+
+.streaming-content::-webkit-scrollbar-thumb:hover,
+.textarea-paper::-webkit-scrollbar-thumb:hover,
+.readonly-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.2);
 }
 </style>

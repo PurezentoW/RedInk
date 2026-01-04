@@ -14,7 +14,7 @@
         <button
           class="btn btn-secondary btn-hover-enhanced"
           @click="goBack"
-          :disabled="store.isStreaming || store.isCopywritingStreaming"
+          :disabled="store.isStreaming || store.isCopywritingStreaming || store.isModifying"
           style="background: white; border: 1px solid var(--border-color);"
         >
           上一步
@@ -24,7 +24,7 @@
         <button
           class="btn btn-primary btn-hover-enhanced"
           @click="generateCopywriting"
-          :disabled="store.isStreaming || store.isCopywritingStreaming"
+          :disabled="store.isStreaming || store.isCopywritingStreaming || store.isModifying"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
@@ -33,11 +33,18 @@
           {{ store.isCopywritingStreaming ? '生成中...' : '生成文案' }}
         </button>
 
+        <!-- 版本历史下拉（新增） -->
+        <VersionHistoryDropdown
+          :record-id="store.recordId"
+          @restore="handleVersionRestore"
+          style="margin-right: 12px;"
+        />
+
         <!-- 开始生成图片按钮（可直接生成） -->
         <button
           class="btn btn-success btn-hover-enhanced"
           @click="startGeneration"
-          :disabled="isSaving || store.isStreaming || store.isCopywritingStreaming"
+          :disabled="isSaving || store.isStreaming || store.isCopywritingStreaming || store.isModifying"
           style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;">
@@ -54,6 +61,12 @@
     <div v-if="store.isStreaming" class="streaming-progress-bar unified-width">
       <div class="spinner"></div>
       <span>AI 正在创作中... ({{ store.outline.pages.length }} 页)</span>
+    </div>
+
+    <!-- AI修改进度提示（新增） -->
+    <div v-if="store.isModifying" class="streaming-progress-bar unified-width" style="background: linear-gradient(135deg, #E6F7FF 0%, #BAE7FF 100%); border: 1px solid rgba(24, 144, 255, 0.2);">
+      <div class="spinner" style="border-color: #1890FF transparent #1890FF transparent;"></div>
+      <span style="color: #1890FF;">AI正在修改中... ({{ store.outline.pages.length }} 页)</span>
     </div>
 
     <!-- 文案生成进度提示（新增） -->
@@ -116,7 +129,7 @@
       </div>
     </div>
 
-    <div class="outline-grid" :class="{ disabled: store.isStreaming }">
+    <div class="outline-grid" :class="{ disabled: store.isStreaming || store.isModifying }">
       <div
         v-for="(page, idx) in store.outline.pages"
         :key="page.index"
@@ -194,7 +207,9 @@
               </svg>
               <span>{{ getSuggestionLabel(page.type) }}</span>
             </div>
-            <div class="suggestion-content">{{ getPageImageSuggestion(page) }}</div>
+            <div class="suggestion-content-scroll">
+              <div class="suggestion-content">{{ getPageImageSuggestion(page) }}</div>
+            </div>
           </div>
 
           <!-- 编辑模式 -->
@@ -247,6 +262,12 @@
     />
 
     <div style="height: 100px;"></div>
+
+    <!-- 底部输入栏（新增） -->
+    <OutlineModifyBar
+      :is-modifying="store.isModifying"
+      @modify="handleModify"
+    />
   </div>
 </template>
 
@@ -256,8 +277,10 @@ import { useRouter } from 'vue-router'
 import { useGeneratorStore } from '../stores/generator'
 import ContentRenderer from '../components/ContentRenderer.vue'
 import CopywritingCard from '../components/CopywritingCard.vue'
+import OutlineModifyBar from '../components/OutlineModifyBar.vue'
+import VersionHistoryDropdown from '../components/VersionHistoryDropdown.vue'
 import { countBodyChars, parseImageSuggestion, parseTitle, parseCoverTitles } from '../utils/contentParser'
-import { generateCopywritingStream } from '../api'
+import { generateCopywritingStream, modifyOutlineStream } from '../api'
 
 const router = useRouter()
 const store = useGeneratorStore()
@@ -755,6 +778,107 @@ const startGeneration = async () => {
   }
   router.push('/generate')
 }
+
+// ========== AI修改相关 ==========
+
+// 处理修改
+const handleModify = async (instruction: string) => {
+  console.log('🎯 handleModify 被调用:', instruction)
+  console.log('📋 当前大纲数据:', {
+    raw: store.outline.raw,
+    rawLength: store.outline.raw?.length,
+    pages: store.outline.pages,
+    pagesCount: store.outline.pages.length
+  })
+
+  // 检查是否有大纲内容
+  if (!store.outline.raw || store.outline.pages.length === 0) {
+    console.log('⚠️ 没有大纲内容')
+    alert('请先生成大纲')
+    return
+  }
+
+  // ⚠️ 重要：在清空之前保存当前大纲数据
+  const currentOutline = {
+    raw: store.outline.raw,
+    pages: store.outline.pages
+  }
+  const currentTopic = store.topic
+
+  console.log('✅ 开始修改流程')
+  // 开始修改（这会清空大纲状态）
+  store.startModifying(instruction)
+
+  try {
+    await modifyOutlineStream(
+      currentTopic,  // 使用保存的 topic
+      currentOutline, // 使用保存的大纲
+      instruction,
+      // onText - 实时更新页面内容
+      (chunk: string, accumulated: string) => {
+        console.log('📝 收到文本块:', chunk.length, '累计:', accumulated.length)
+        store.updateModifyingText(chunk, accumulated)
+      },
+      // onComplete - 完成修改
+      (result: { outline: string; pages: any[]; summary: string }) => {
+        console.log('🎉 修改完成:', result)
+        store.finishModifying(result)
+
+        // 显示成功提示
+        alert(`✨ ${result.summary}\n\n修改已应用，可继续编辑或生成图片`)
+      },
+      // onError - 错误处理
+      (error: string) => {
+        console.error('修改失败:', error)
+        store.cancelModifying()
+        alert('修改失败：' + error)
+      }
+    )
+  } catch (error: any) {
+    console.error('修改异常:', error)
+    store.cancelModifying()
+    alert('修改异常：' + error.message)
+  }
+}
+
+// 处理版本恢复
+const handleVersionRestore = async (version: any) => {
+  // 先保存当前版本
+  if (store.recordId && hasUnsavedChanges.value) {
+    await performAutoSave()
+  }
+
+  // 数据验证和降级处理
+  let rawText = version.outline.raw || ''
+  const pages = version.outline.pages || []
+
+  // 如果 raw 为空，尝试从 pages 重建
+  if (!rawText && pages.length > 0) {
+    console.log('⚠️ 版本 raw 字段为空，从 pages 重建')
+    rawText = pages
+      .map(p => p.content || '')
+      .join('\n\n<page>\n\n')
+  }
+
+  // 如果仍然没有内容，显示错误
+  if (!rawText && pages.length === 0) {
+    alert('❌ 该版本数据不完整，无法恢复')
+    return
+  }
+
+  // 应用历史版本
+  store.setOutline(rawText, pages)
+
+  // 标记为有未保存的更改
+  hasUnsavedChanges.value = true
+
+  // 自动保存
+  debouncedSave()
+
+  // 显示成功提示
+  alert(`✅ 已恢复到版本 ${version.version_id.split('_')[0]}`)
+}
+
 </script>
 
 <style scoped>
@@ -1201,6 +1325,11 @@ const startGeneration = async () => {
   letter-spacing: 0.5px;
 }
 
+.suggestion-content-scroll {
+  max-height: 120px;
+  overflow-y: auto;
+}
+
 .suggestion-content {
   color: #8c8c8c;
   line-height: 1.6;
@@ -1211,6 +1340,7 @@ const startGeneration = async () => {
 .suggestion-textarea {
   width: 100%;
   min-height: 60px;
+  max-height: 120px;
   padding: 8px;
   border: 1px solid #ffd591;
   border-radius: 6px;
@@ -1219,6 +1349,7 @@ const startGeneration = async () => {
   font-size: 12px;
   line-height: 1.6;
   resize: vertical;
+  overflow-y: auto;
   font-family: inherit;
   transition: all 0.2s;
 }
@@ -1487,5 +1618,27 @@ button:focus-visible,
   .search-results-list {
     grid-template-columns: 1fr;
   }
+}
+
+/* 美化滚动条 */
+.suggestion-content-scroll::-webkit-scrollbar,
+.suggestion-textarea::-webkit-scrollbar {
+  width: 4px;
+}
+
+.suggestion-content-scroll::-webkit-scrollbar-track,
+.suggestion-textarea::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.suggestion-content-scroll::-webkit-scrollbar-thumb,
+.suggestion-textarea::-webkit-scrollbar-thumb {
+  background: rgba(250, 140, 22, 0.2);
+  border-radius: 2px;
+}
+
+.suggestion-content-scroll::-webkit-scrollbar-thumb:hover,
+.suggestion-textarea::-webkit-scrollbar-thumb:hover {
+  background: rgba(250, 140, 22, 0.4);
 }
 </style>

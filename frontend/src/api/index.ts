@@ -674,3 +674,102 @@ export async function testConnection(config: {
   const response = await axios.post(`${API_BASE_URL}/config/test`, config)
   return response.data
 }
+
+// 流式修改大纲（SSE）
+export async function modifyOutlineStream(
+  topic: string,
+  currentOutline: { raw: string; pages: Page[] },
+  instruction: string,
+  onText?: (chunk: string, accumulated: string) => void,
+  onComplete?: (result: {
+    outline: string
+    pages: Page[]
+    summary: string
+  }) => void,
+  onError?: (error: string) => void,
+  onStreamError?: (error: Error) => void
+): Promise<void> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/outline/modify/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        topic,
+        current_outline: currentOutline,
+        instruction
+      })
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error('无法读取响应流')
+    }
+
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    // SSE 解析逻辑（复用 generateOutlineStream 的逻辑）
+    while (true) {
+      const { done, value } = await reader.read()
+
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (!line.trim()) continue
+
+        const [eventLine, dataLine] = line.split('\n')
+        if (!eventLine || !dataLine) continue
+
+        const eventType = eventLine.replace('event: ', '').trim()
+        const eventData = dataLine.replace('data: ', '').trim()
+
+        try {
+          const data = JSON.parse(eventData)
+
+          switch (eventType) {
+            case 'progress':
+              // 可以用于显示"正在修改"状态
+              break
+            case 'text':
+              // 打字机效果核心
+              if (onText) {
+                onText(data.chunk, data.accumulated)
+              }
+              break
+            case 'complete':
+              if (onComplete) {
+                onComplete({
+                  outline: data.outline,
+                  pages: data.pages,
+                  summary: data.summary
+                })
+              }
+              break
+            case 'error':
+              if (onError) {
+                onError(data.error)
+              }
+              break
+          }
+        } catch (e) {
+          console.error('解析 SSE 数据失败:', e)
+        }
+      }
+    }
+  } catch (error) {
+    if (onStreamError) {
+      onStreamError(error as Error)
+    }
+  }
+}
+

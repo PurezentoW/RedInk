@@ -382,6 +382,116 @@ class HistoryService:
                 "error": f"扫描所有任务失败: {str(e)}"
             }
 
+    # ========== 大纲版本管理方法 ==========
+
+    def save_outline_version(self, record_id: str, outline: Dict, instruction: str, summary: str) -> str:
+        """
+        保存大纲版本
+
+        Args:
+            record_id: 历史记录ID
+            outline: 大纲数据 {raw, pages}
+            instruction: 用户修改指令
+            summary: 修改摘要
+
+        Returns:
+            version_id: 版本ID
+        """
+        import time
+
+        # 创建版本目录
+        versions_dir = Path(self.history_dir) / "outline_versions" / record_id
+        versions_dir.mkdir(parents=True, exist_ok=True)
+
+        # 获取现有版本数量
+        existing_versions = list(versions_dir.glob("*.json"))
+        version_num = len(existing_versions) + 1
+
+        # 生成版本ID
+        version_id = f"v{version_num}_{int(time.time())}"
+
+        # 版本数据
+        version_data = {
+            "version_id": version_id,
+            "record_id": record_id,
+            "created_at": datetime.now().isoformat(),
+            "modification": {
+                "instruction": instruction,
+                "summary": summary
+            },
+            "outline": outline
+        }
+
+        # 保存版本
+        version_file = versions_dir / f"{version_id}.json"
+        with open(version_file, "w", encoding="utf-8") as f:
+            json.dump(version_data, f, ensure_ascii=False, indent=2)
+
+        # LRU清理：最多保留10个版本
+        if len(existing_versions) >= 10:
+            # 按修改时间排序，删除最旧的版本
+            versions = sorted(existing_versions, key=lambda p: p.stat().st_mtime)
+            # 保留v1初始版本，删除其他旧版本
+            for version_file in versions[:-1]:  # 保留最新的9个
+                if not version_file.stem.startswith("v1_"):
+                    try:
+                        version_file.unlink()
+                    except Exception:
+                        pass
+
+        return version_id
+
+    def get_outline_versions(self, record_id: str, limit: int = 10) -> List[Dict]:
+        """
+        获取版本列表（按时间倒序）
+
+        Args:
+            record_id: 历史记录ID
+            limit: 最大返回数量
+
+        Returns:
+            版本列表
+        """
+        versions_dir = Path(self.history_dir) / "outline_versions" / record_id
+
+        if not versions_dir.exists():
+            return []
+
+        versions = []
+        for version_file in sorted(versions_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)[:limit]:
+            try:
+                with open(version_file, "r", encoding="utf-8") as f:
+                    version_data = json.load(f)
+                    versions.append(version_data)
+            except Exception as e:
+                print(f"Error loading version {version_file}: {e}")
+                continue
+
+        return versions
+
+    def get_outline_version(self, record_id: str, version_id: str) -> Optional[Dict]:
+        """
+        获取单个版本详情
+
+        Args:
+            record_id: 历史记录ID
+            version_id: 版本ID
+
+        Returns:
+            版本数据，不存在则返回None
+        """
+        version_file = Path(self.history_dir) / "outline_versions" / record_id / f"{version_id}.json"
+
+        if not version_file.exists():
+            return None
+
+        try:
+            with open(version_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Error loading version {version_id}: {e}")
+            return None
+
 
 _service_instance = None
 
