@@ -33,13 +33,6 @@
           {{ store.isCopywritingStreaming ? '生成中...' : '生成文案' }}
         </button>
 
-        <!-- 版本历史下拉（新增） -->
-        <VersionHistoryDropdown
-          :record-id="store.recordId"
-          @restore="handleVersionRestore"
-          style="margin-right: 12px;"
-        />
-
         <!-- 开始生成图片按钮（可直接生成） -->
         <button
           class="btn btn-success btn-hover-enhanced"
@@ -264,7 +257,9 @@
     <div style="height: 100px;"></div>
 
     <!-- 底部输入栏（新增） -->
+    <!-- 在生成或修改过程中隐藏 -->
     <OutlineModifyBar
+      v-if="!store.isStreaming && !store.isModifying"
       :is-modifying="store.isModifying"
       @modify="handleModify"
     />
@@ -278,7 +273,6 @@ import { useGeneratorStore } from '../stores/generator'
 import ContentRenderer from '../components/ContentRenderer.vue'
 import CopywritingCard from '../components/CopywritingCard.vue'
 import OutlineModifyBar from '../components/OutlineModifyBar.vue'
-import VersionHistoryDropdown from '../components/VersionHistoryDropdown.vue'
 import { countBodyChars, parseImageSuggestion, parseTitle, parseCoverTitles } from '../utils/contentParser'
 import { generateCopywritingStream, modifyOutlineStream } from '../api'
 
@@ -290,7 +284,7 @@ const dragOverIndex = ref<number | null>(null)
 const draggedIndex = ref<number | null>(null)
 
 // 搜索结果相关状态
-const searchResultsExpanded = ref(false)  // 默认收起，搜索时自动展开
+const searchResultsExpanded = ref(true)  // 默认展开，生成完成后自动收起
 
 // 计算属性：是否应该显示搜索结果
 const shouldShowSearchResults = computed(() => {
@@ -839,44 +833,6 @@ const handleModify = async (instruction: string) => {
     store.cancelModifying()
     alert('修改异常：' + error.message)
   }
-}
-
-// 处理版本恢复
-const handleVersionRestore = async (version: any) => {
-  // 先保存当前版本
-  if (store.recordId && hasUnsavedChanges.value) {
-    await performAutoSave()
-  }
-
-  // 数据验证和降级处理
-  let rawText = version.outline.raw || ''
-  const pages = version.outline.pages || []
-
-  // 如果 raw 为空，尝试从 pages 重建
-  if (!rawText && pages.length > 0) {
-    console.log('⚠️ 版本 raw 字段为空，从 pages 重建')
-    rawText = pages
-      .map(p => p.content || '')
-      .join('\n\n<page>\n\n')
-  }
-
-  // 如果仍然没有内容，显示错误
-  if (!rawText && pages.length === 0) {
-    alert('❌ 该版本数据不完整，无法恢复')
-    return
-  }
-
-  // 应用历史版本
-  store.setOutline(rawText, pages)
-
-  // 标记为有未保存的更改
-  hasUnsavedChanges.value = true
-
-  // 自动保存
-  debouncedSave()
-
-  // 显示成功提示
-  alert(`✅ 已恢复到版本 ${version.version_id.split('_')[0]}`)
 }
 
 </script>

@@ -70,6 +70,12 @@ export interface GeneratorState {
   modifyInstruction: string
   modifyAccumulatedText: string
 
+  // 修改前的备份（用于失败时恢复）
+  backupOutline: {
+    raw: string
+    pages: any[]
+  } | null
+
   // 生成进度
   progress: {
     current: number
@@ -160,6 +166,7 @@ export const useGeneratorStore = defineStore('generator', {
       isModifying: false,
       modifyInstruction: '',
       modifyAccumulatedText: '',
+      backupOutline: null,
       progress: saved.progress || {
         current: 0,
         total: 0,
@@ -569,6 +576,10 @@ export const useGeneratorStore = defineStore('generator', {
       this.currentStreamingPageIndex = -1
       this.allPagesStreamed = false
       this.accumulatedText = ''
+      this.isModifying = false
+      this.modifyInstruction = ''
+      this.modifyAccumulatedText = ''
+      this.backupOutline = null
       this.progress = {
         current: 0,
         total: 0,
@@ -657,6 +668,12 @@ export const useGeneratorStore = defineStore('generator', {
 
     // 开始修改
     startModifying(instruction: string) {
+      // 先备份当前大纲，用于失败时恢复
+      this.backupOutline = {
+        raw: this.outline.raw,
+        pages: JSON.parse(JSON.stringify(this.outline.pages))
+      }
+
       this.isModifying = true
       this.modifyInstruction = instruction
       this.modifyAccumulatedText = ''
@@ -692,8 +709,8 @@ export const useGeneratorStore = defineStore('generator', {
       this.currentStreamingPageIndex = -1
       this.allPagesStreamed = true
 
-      // 保存版本到历史
-      this.saveOutlineVersion(result.summary)
+      // 清除备份（修改成功，不再需要）
+      this.backupOutline = null
 
       // 自动保存
       this.autoSaveDraft()
@@ -703,43 +720,20 @@ export const useGeneratorStore = defineStore('generator', {
 
     // 取消修改
     cancelModifying() {
+      // 如果有备份，恢复原始内容
+      if (this.backupOutline) {
+        this.outline.raw = this.backupOutline.raw
+        this.outline.pages = this.backupOutline.pages
+        this.backupOutline = null
+        console.log('✅ 已从备份恢复原始大纲')
+      }
+
       this.isModifying = false
       this.modifyInstruction = ''
       this.modifyAccumulatedText = ''
       this.currentStreamingPageIndex = -1
+      this.allPagesStreamed = true
     },
-
-    // 保存大纲版本到历史
-    async saveOutlineVersion(summary: string) {
-      if (!this.recordId) {
-        console.log('⚠️ 没有recordId，跳过版本保存')
-        return
-      }
-
-      try {
-        const response = await fetch(`/api/history/${this.recordId}/versions`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            outline: {
-              raw: this.outline.raw,
-              pages: this.outline.pages
-            },
-            instruction: this.modifyInstruction,
-            summary: summary
-          })
-        })
-
-        if (response.ok) {
-          const data = await response.json()
-          console.log('✅ 版本已保存:', data.version_id)
-        } else {
-          console.error('❌ 版本保存失败:', await response.text())
-        }
-      } catch (error) {
-        console.error('❌ 版本保存异常:', error)
-      }
-    }
   }
 })
 
