@@ -273,7 +273,7 @@ import { useGeneratorStore } from '../stores/generator'
 import ContentRenderer from '../components/ContentRenderer.vue'
 import CopywritingCard from '../components/CopywritingCard.vue'
 import OutlineModifyBar from '../components/OutlineModifyBar.vue'
-import { countBodyChars, parseImageSuggestion, parseTitle, parseCoverTitles } from '../utils/contentParser'
+import { countBodyChars, parseImageSuggestion } from '../utils/contentParser'
 import { generateCopywritingStream, modifyOutlineStream } from '../api'
 
 const router = useRouter()
@@ -360,53 +360,15 @@ const getPageBodyWithoutSuggestion = (page: any) => {
   return parsed.bodyContent
 }
 
-// 获取用于显示的内容（标题 + 正文，不含配图建议）
+// 获取用于显示的内容（编辑时直接返回原始内容，只读时保持原标题结构）
 const getContentForDisplay = (page: any) => {
   // 如果正在编辑正文，返回临时编辑内容
   if (editingPageIndex.value === page.index && editingBodyContent.value !== null) {
     return editingBodyContent.value
   }
 
-  const content = page.streamingContent || page.content
-
-  // 解析配图建议，获取不含配图建议的正文
-  const parsed = parseImageSuggestion(content, page.type)
-  const bodyContent = parsed.bodyContent
-
-  // 根据页面类型重建内容
-  if (page.type === 'cover') {
-    // 封面页：主标题 + 副标题 + 正文
-    const coverTitles = parseCoverTitles(content)
-    let result = ''
-
-    if (coverTitles.mainTitle) {
-      const hasKeyword = content.includes('标题：') || content.includes('标题:')
-      if (hasKeyword) {
-        result = `标题：${coverTitles.mainTitle}\n`
-      } else {
-        result = `${coverTitles.mainTitle}\n`
-      }
-    }
-
-    if (coverTitles.subTitle) {
-      const hasKeyword = content.includes('副标题：') || content.includes('副标题:')
-      if (hasKeyword) {
-        result += `副标题：${coverTitles.subTitle}\n`
-      } else {
-        result += `${coverTitles.subTitle}\n`
-      }
-    }
-
-    result += bodyContent
-    return result
-  } else {
-    // 其他页面：标题 + 正文
-    const title = parseTitle(content, page.type)
-    if (title) {
-      return `${title}\n${bodyContent}`
-    }
-    return bodyContent
-  }
+  // 只读模式下，直接返回原始内容，ContentRenderer 会处理
+  return page.content || ''
 }
 
 // 判断是否正在编辑配图建议
@@ -423,9 +385,9 @@ const toggleEditSuggestion = (pageIndex: number) => {
   }
 }
 
-// 获取配图建议标签（封面显示"背景"，其他显示"配图建议"）
+// 获取配图建议标签（统一显示"配图建议"）
 const getSuggestionLabel = (pageType: string) => {
-  return pageType === 'cover' ? '背景' : '配图建议'
+  return '配图建议'
 }
 
 // 获取正在编辑的配图建议内容
@@ -473,45 +435,12 @@ const updatePageContentWithSuggestion = (pageIndex: number, newSuggestion: strin
   const parsed = parseImageSuggestion(content, page.type)
   const bodyContent = parsed.bodyContent
 
-  // 构建完整内容
-  let fullContent = ''
+  // 直接使用原始内容，只替换配图建议部分
+  // 如果有新的配图建议，添加到末尾
+  let fullContent = bodyContent
 
-  // 封面页需要特殊处理（主标题和副标题）
-  if (page.type === 'cover') {
-    const coverTitles = parseCoverTitles(content)
-
-    if (coverTitles.mainTitle) {
-      // 检查原始内容是否使用"标题："关键词
-      const hasKeyword = content.includes('标题：') || content.includes('标题:')
-      if (hasKeyword) {
-        fullContent = `标题：${coverTitles.mainTitle}\n`
-      } else {
-        fullContent = `${coverTitles.mainTitle}\n`
-      }
-    }
-
-    if (coverTitles.subTitle) {
-      const hasKeyword = content.includes('副标题：') || content.includes('副标题:')
-      if (hasKeyword) {
-        fullContent += `副标题：${coverTitles.subTitle}\n`
-      } else {
-        fullContent += `${coverTitles.subTitle}\n`
-      }
-    }
-  } else {
-    // 其他页面类型
-    const title = parseTitle(content, page.type)
-    if (title) {
-      fullContent = `${title}\n`
-    }
-  }
-
-  // 添加正文
-  fullContent += bodyContent
-
-  // 添加配图建议/背景
   if (newSuggestion) {
-    const label = page.type === 'cover' ? '背景' : '配图建议'
+    const label = '配图建议'
     const separator = fullContent && !fullContent.endsWith('\n') ? '\n' : ''
     fullContent = `${fullContent}${separator}${label}：${newSuggestion}`
   }
@@ -563,31 +492,15 @@ const handleInput = () => {
   debouncedSave()
 }
 
-// 处理失焦（自动保存并退出编辑）
+// 处理失焦（直接保存编辑后的内容）
 const handleBlur = () => {
-  // 如果正在编辑正文，失焦时需要恢复配图建议
-  if (editingPageIndex.value !== null && originalContentBeforeEdit.value) {
+  // 如果正在编辑正文，直接保存编辑内容
+  if (editingPageIndex.value !== null && editingBodyContent.value !== null) {
     const index = editingPageIndex.value
-    const page = store.outline.pages[index]
-
-    // 从原始内容中提取配图建议
-    const originalParsed = parseImageSuggestion(originalContentBeforeEdit.value, page.type)
-
-    // 获取编辑后的内容（使用临时内容或原始内容）
-    const editedContent = editingBodyContent.value !== null
-      ? editingBodyContent.value
-      : getContentForDisplay(page)
-
-    // 如果原始内容有配图建议，需要添加回来
-    if (originalParsed.imageSuggestion) {
-      const label = page.type === 'cover' ? '背景' : '配图建议'
-      const separator = editedContent && !editedContent.endsWith('\n') ? '\n' : ''
-      const fullContent = `${editedContent}${separator}${label}：${originalParsed.imageSuggestion}`
-      store.updatePage(index, fullContent)
-    } else {
-      // 没有配图建议，直接保存编辑后的内容
-      store.updatePage(index, editedContent)
-    }
+    // 直接保存编辑后的内容，不做任何处理
+    store.updatePage(index, editingBodyContent.value)
+    hasUnsavedChanges.value = true
+    debouncedSave()
   }
 
   // 保存更改

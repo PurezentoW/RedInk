@@ -11,40 +11,67 @@ import type { Page } from '../api'
  * @returns 解析后的页面数组
  */
 export function parsePagesFromText(accumulated: string): Page[] {
-  // 使用 <page> 标签分割页面
-  const pageTexts = accumulated.split(/<page>/i)
+  // 预处理：去除所有 </page> 闭合标签（新提示词格式）
+  const cleaned = accumulated.replace(/<\/page>/gi, '')
 
-  return pageTexts
-    .map((text, index) => {
-      const trimmed = text.trim()
-      if (!trimmed) return null
+  // 使用正则表达式匹配 <page> 标签之间的内容
+  // 支持两种格式：
+  // 1. <page> 在内容之前（新格式）：<page>[封面]内容<page>[内容]内容
+  // 2. <page> 在内容之后（旧格式）：[封面]内容<page>[内容]内容<page>
+  const pagePattern = /<page>\s*([^\0]*?)(?=<page>|$)/gi
+  const matches = Array.from(cleaned.matchAll(pagePattern), m => m[1])
 
-      // 识别页面类型（基于后端的解析逻辑）
-      const typeMatch = trimmed.match(/^\[(\S+)\]/)
-      let type: 'cover' | 'content' | 'summary' = 'content'
-      let content = trimmed
+  // 如果没有匹配到任何内容（可能使用旧格式或没有<page>标签）
+  if (matches.length === 0 && cleaned.trim()) {
+    // 尝试旧格式：用 <page> 分割
+    const fallbackTexts = cleaned.split(/<page>/i).filter(t => t.trim())
+    if (fallbackTexts.length > 0) {
+      return fallbackTexts.map((text, index) => parseSinglePage(text, index))
+        .filter((page): page is Page => page !== null)
+    }
+  }
 
-      if (typeMatch) {
-        const typeMapping: Record<string, 'cover' | 'content' | 'summary'> = {
-          '封面': 'cover',
-          '内容': 'content',
-          '总结': 'summary'
-        }
-        type = typeMapping[typeMatch[1]] || 'content'
-        // 移除类型标记，保留实际内容
-        content = trimmed.replace(/^\[\S+\]\s*/, '')
-      }
-
-      return {
-        index,
-        type,
-        content: content, // 使用去除类型标记后的内容
-        streamingContent: '',
-        isStreaming: false,
-        isStreamComplete: false
-      }
-    })
+  return matches
+    .map((text, index) => parseSinglePage(text, index))
     .filter((page): page is Page => page !== null)
+}
+
+/**
+ * 解析单个页面
+ * @param text 页面文本
+ * @param index 页面索引
+ * @returns 页面对象或 null
+ */
+function parseSinglePage(text: string, index: number): Page | null {
+  // 去除所有 <page> 和 </page> 标签
+  let cleaned = text.replace(/<\/?page>/gi, '').trim()
+
+  if (!cleaned) return null
+
+  // 识别页面类型（基于后端的解析逻辑）
+  const typeMatch = cleaned.match(/^\[(\S+)\]/)
+  let type: 'cover' | 'content' | 'summary' = 'content'
+  let content = cleaned
+
+  if (typeMatch) {
+    const typeMapping: Record<string, 'cover' | 'content' | 'summary'> = {
+      '封面': 'cover',
+      '内容': 'content',
+      '总结': 'summary'
+    }
+    type = typeMapping[typeMatch[1]] || 'content'
+    // 移除类型标记，保留实际内容
+    content = cleaned.replace(/^\[\S+\]\s*/, '')
+  }
+
+  return {
+    index,
+    type,
+    content: content, // 使用去除类型标记后的内容
+    streamingContent: '',
+    isStreaming: false,
+    isStreamComplete: false
+  }
 }
 
 /**

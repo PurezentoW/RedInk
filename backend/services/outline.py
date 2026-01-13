@@ -90,7 +90,7 @@ class OutlineService:
         prompt_path = os.path.join(
             os.path.dirname(os.path.dirname(__file__)),
             "prompts",
-            "outline_prompt.txt"
+            "outline_prompt2.txt"
         )
         with open(prompt_path, "r", encoding="utf-8") as f:
             return f.read()

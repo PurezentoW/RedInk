@@ -294,7 +294,7 @@ export const useGeneratorStore = defineStore('generator', {
     updateStreamingText(chunk: string, accumulated: string) {
       this.accumulatedText = accumulated
 
-      // 重新解析所有页面
+      // 重新解析所有页面（使用新的解析逻辑）
       const newPages = parsePagesFromText(accumulated)
       const oldPages = this.outline.pages
 
@@ -325,28 +325,26 @@ export const useGeneratorStore = defineStore('generator', {
           const newPage = newPages[index]
           newPage.isStreaming = true
           newPage.isStreamComplete = false
-          newPage.streamingContent = ''
+          newPage.streamingContent = newPage.content
 
           this.outline.pages.push(newPage)
 
           console.log(`📄 新增页面 ${index}: ${newPage.type}, 内容:`, newPage.content.substring(0, 20))
         }
 
-        // 从累积文本中提取所有页面内容
-        const pageTexts = accumulated.split(/<page>/i).map(text => text.trim()).filter(text => text)
-
-        // 更新所有已存在页面的流式内容
+        // 更新所有页面的流式内容（使用新解析的页面内容）
         this.outline.pages.forEach((page, idx) => {
-          if (idx < pageTexts.length) {
-            // 使用对应的页面文本更新流式内容
-            page.streamingContent = pageTexts[idx]
+          if (idx < newPages.length) {
+            const newPage = newPages[idx]
+            // 使用新解析的页面内容更新流式内容
+            page.streamingContent = newPage.content
 
             // 如果该页面正在流式中
             if (page.isStreaming) {
               this.currentStreamingPageIndex = idx
 
               // 检查是否是该页面的最后一段（检测是否有下一个页面）
-              const isLastPage = idx === pageTexts.length - 1
+              const isLastPage = idx === newPages.length - 1
 
               if (!isLastPage) {
                 // 不是最后一页，说明该页面已完成
@@ -365,11 +363,10 @@ export const useGeneratorStore = defineStore('generator', {
           this.currentStreamingPageIndex
         )
 
-        if (streamingIndex !== -1) {
+        if (streamingIndex !== -1 && streamingIndex < newPages.length) {
           const page = this.outline.pages[streamingIndex]
           // 确保流式内容是最新的
-          const pageTexts = accumulated.split(/<page>/i).map(text => text.trim()).filter(text => text)
-          page.streamingContent = pageTexts[streamingIndex] || ''
+          page.streamingContent = newPages[streamingIndex].content
         }
       }
     },
@@ -382,14 +379,19 @@ export const useGeneratorStore = defineStore('generator', {
       used_search?: boolean;
       search_results?: any[]
     }) {
-      this.outline.raw = result.outline
-      this.outline.pages = result.pages
+      // 使用前端流式解析的页面，而不是后端返回的页面
+      // 因为前端的 parsePagesFromText 更准确地处理了新格式
+      const finalPages = parsePagesFromText(this.accumulatedText)
 
-      // 标记所有页面为完成状态
+      this.outline.raw = result.outline
+      this.outline.pages = finalPages
+
+      // 标记所有页面为完成状态，并确保 content 被正确设置
       this.outline.pages.forEach(page => {
         page.isStreamComplete = true
         page.isStreaming = false
-        page.content = page.content || page.streamingContent || ''
+        // 使用 streamingContent 作为最终内容
+        page.content = page.streamingContent || page.content || ''
       })
 
       // 保存搜索结果
@@ -693,14 +695,18 @@ export const useGeneratorStore = defineStore('generator', {
 
     // 完成修改
     finishModifying(result: { outline: string; pages: Page[]; summary: string }) {
-      this.outline.raw = result.outline
-      this.outline.pages = result.pages
+      // 使用前端流式解析的页面，而不是后端返回的页面
+      const finalPages = parsePagesFromText(this.modifyAccumulatedText)
 
-      // 标记所有页面为完成状态
+      this.outline.raw = result.outline
+      this.outline.pages = finalPages
+
+      // 标记所有页面为完成状态，并确保 content 被正确设置
       this.outline.pages.forEach(page => {
         page.isStreamComplete = true
         page.isStreaming = false
-        page.content = page.content || page.streamingContent || ''
+        // 使用 streamingContent 作为最终内容
+        page.content = page.streamingContent || page.content || ''
       })
 
       this.isModifying = false

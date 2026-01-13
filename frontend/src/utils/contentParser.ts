@@ -155,14 +155,9 @@ export function parseBody(content: string, pageType?: string): string {
     return bodyLines.join('\n').trim()
   }
 
-  // 其他类型：移除第一行（标题），保留剩余内容
-  const bodyLines = lines.slice(1)
-
-  if (bodyLines.length === 0) {
-    return ''
-  }
-
-  return bodyLines.join('\n')
+  // 其他类型：保留所有内容（包括 Markdown 标题）
+  // 让 Markdown 渲染器自己处理标题格式
+  return cleaned.trim()
 }
 
 /**
@@ -203,29 +198,20 @@ export function getCleanedContent(content: string): string {
  * @returns 解析后的正文和配图建议
  */
 export function parseImageSuggestion(content: string, pageType?: string): ParsedImageSuggestion {
+  // 0. 先清理所有页面标签（<page> 和 </page>）
+  const cleaned = content.replace(/<\/?page>/gi, '').trim()
+
   // 1. 先获取正文（已移除标题和AI标记）
-  const body = parseBody(content, pageType)
+  const body = parseBody(cleaned, pageType)
 
   if (!body) {
     return { bodyContent: '', imageSuggestion: null }
   }
 
-  // 2. 查找配图建议标记（支持多种格式）
-  // 封面页使用"背景："，其他页面使用"配图建议："
-  let patterns: RegExp[]
-
-  if (pageType === 'cover') {
-    // 封面：匹配"背景："（支持多种位置）
-    patterns = [
-      /(?:^|\n)背景[：:]\s*/i,      // 行首或换行后的"背景："
-      /背景[：:]\s*/i,               // 任意位置的"背景："（兜底）
-    ]
-  } else {
-    // 内容/总结：匹配"配图建议："（必须换行符）
-    patterns = [
-      /\n配图建议[：:]\s*/i,         // 换行后的"配图建议："
-    ]
-  }
+  // 2. 查找配图建议标记（统一使用"配图建议："）
+  const patterns = [
+    /\n配图建议[：:]\s*/i,         // 换行后的"配图建议："
+  ]
 
   let match: RegExpMatchArray | null = null
 
@@ -245,7 +231,10 @@ export function parseImageSuggestion(content: string, pageType?: string): Parsed
   // 3. 分离正文和配图建议
   const index = body.indexOf(match[0])
   const bodyContent = body.substring(0, index).trim()
-  const imageSuggestion = body.substring(index + match[0].length).trim()
+  let imageSuggestion = body.substring(index + match[0].length).trim()
+
+  // 4. 清理配图建议中的页面标签（防止残留）
+  imageSuggestion = imageSuggestion.replace(/<\/?page>/gi, '').trim()
 
   return { bodyContent, imageSuggestion }
 }
