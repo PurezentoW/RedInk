@@ -13,7 +13,7 @@
     <textarea
       v-else-if="isEditing"
       ref="textareaRef"
-      :value="rawContent"
+      :value="displayBody"
       class="textarea-paper"
       placeholder="在此输入文案..."
       @input="handleInput"
@@ -69,31 +69,53 @@ watch(() => props.isEditing, (newVal) => {
   }
 })
 
-const displayBody = computed(() => {
+// 分离正文和配图建议
+const parsedContent = computed(() => {
   const content = props.isStreaming && props.streamingContent
     ? props.streamingContent
     : props.rawContent
 
   // 清理页面类型标记和标签
-  let cleaned = content
+  const cleaned = content
     .replace(/^\[封面\]\s*/i, '')      // 移除 [封面] 标记
     .replace(/^\[内容\]\s*/i, '')      // 移除 [内容] 标记
     .replace(/^\[总结\]\s*/i, '')      // 移除 [总结] 标记
     .replace(/<\/?page>/gi, '')       // 移除 <page> 标签
     .trim()
 
-  // 如果不是编辑模式，直接渲染 Markdown（不分离配图建议）
-  if (!props.isEditing) {
-    return md.render(cleaned)
-  }
+  return parseImageSuggestion(cleaned, props.pageType)
+})
 
-  return cleaned
+// 显示内容（根据模式决定）
+const displayBody = computed(() => {
+  const { bodyContent } = parsedContent.value
+
+  // 编辑模式和只读模式都只显示正文
+  if (props.isEditing) {
+    // 编辑模式：返回原始正文（用于 textarea）
+    return bodyContent
+  } else {
+    // 只读模式：渲染 Markdown
+    return md.render(bodyContent)
+  }
 })
 
 // 事件处理
 const handleInput = (event: Event) => {
   const target = event.target as HTMLTextAreaElement
-  emit('update:content', target.value)
+  const newBodyContent = target.value
+
+  // 重新组合正文和原有的配图建议
+  const { imageSuggestion } = parsedContent.value
+  let fullContent = newBodyContent
+
+  if (imageSuggestion) {
+    const label = '配图建议'
+    const separator = fullContent && !fullContent.endsWith('\n') ? '\n' : ''
+    fullContent = `${fullContent}${separator}${label}：${imageSuggestion}`
+  }
+
+  emit('update:content', fullContent)
 }
 
 const handleBlur = () => {
@@ -115,6 +137,9 @@ const handleStartEdit = () => {
   border: 1px solid #f0f0f0;
   max-height: 400px;
   overflow-y: auto;
+  overflow-x: hidden;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* 流式文本容器 */
@@ -124,6 +149,10 @@ const handleStartEdit = () => {
   line-height: 1.8;
   color: #262626;
   position: relative;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* 流式内容的正文样式 */
@@ -192,6 +221,9 @@ const handleStartEdit = () => {
   transition: all 0.3s ease;
   max-height: 400px;
   overflow-y: auto;
+  overflow-x: hidden;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .readonly-content:hover {
@@ -209,16 +241,22 @@ const handleStartEdit = () => {
   line-height: 1.8;
   color: #262626;
   word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 /* 完整内容样式（包含标题的 Markdown） */
 .full-content {
   white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 /* Markdown 样式 */
 .markdown-body {
   white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .markdown-body h1,
@@ -246,10 +284,21 @@ const handleStartEdit = () => {
 .markdown-body ol {
   padding-left: 2em;
   margin: 0.5em 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .markdown-body li {
   margin: 0.25em 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  list-style-position: outside;
+}
+
+/* 确保列表内容正确显示 */
+.markdown-body li > * {
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .markdown-body code {
@@ -258,6 +307,10 @@ const handleStartEdit = () => {
   border-radius: 3px;
   font-size: 0.9em;
   font-family: 'Courier New', monospace;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-all;
+  max-width: 100%;
 }
 
 .markdown-body pre {
@@ -266,11 +319,15 @@ const handleStartEdit = () => {
   border-radius: 6px;
   overflow-x: auto;
   margin: 0.5em 0;
+  max-width: 100%;
 }
 
 .markdown-body pre code {
   background: none;
   padding: 0;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  word-break: break-all;
 }
 
 .markdown-body strong {

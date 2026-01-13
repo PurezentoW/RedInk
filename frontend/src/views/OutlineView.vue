@@ -1236,21 +1236,9 @@ const handleModify = async (instruction: string) => {
   pointer-events: none;
 }
 
-/* 全局禁用覆盖层（新增） */
+/* 全局禁用状态（流式生成中） */
 .outline-grid.disabled {
-  position: relative;
-}
-
-.outline-grid.disabled::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(255, 255, 255, 0.6);
-  z-index: 100;
-  pointer-events: all;
+  /* 保持卡片原始样式，不添加覆盖层或边框动画 */
 }
 
 .disabled {

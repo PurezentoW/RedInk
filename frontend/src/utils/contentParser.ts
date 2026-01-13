@@ -201,10 +201,10 @@ export function parseImageSuggestion(content: string, pageType?: string): Parsed
   // 0. 先清理所有页面标签（<page> 和 </page>）
   const cleaned = content.replace(/<\/?page>/gi, '').trim()
 
-  // 1. 先获取正文（已移除标题和AI标记）
-  const body = parseBody(cleaned, pageType)
+  // 1. 清理 AI 页面类型标记
+  const bodyWithoutMarkers = cleanPageMarkers(cleaned)
 
-  if (!body) {
+  if (!bodyWithoutMarkers) {
     return { bodyContent: '', imageSuggestion: null }
   }
 
@@ -216,7 +216,7 @@ export function parseImageSuggestion(content: string, pageType?: string): Parsed
   let match: RegExpMatchArray | null = null
 
   for (const pattern of patterns) {
-    const result = body.match(pattern)
+    const result = bodyWithoutMarkers.match(pattern)
     if (result) {
       match = result
       break
@@ -224,14 +224,14 @@ export function parseImageSuggestion(content: string, pageType?: string): Parsed
   }
 
   if (!match) {
-    // 没有找到配图建议，返回全部内容
-    return { bodyContent: body, imageSuggestion: null }
+    // 没有找到配图建议，返回全部内容（包括标题）
+    return { bodyContent: bodyWithoutMarkers, imageSuggestion: null }
   }
 
   // 3. 分离正文和配图建议
-  const index = body.indexOf(match[0])
-  const bodyContent = body.substring(0, index).trim()
-  let imageSuggestion = body.substring(index + match[0].length).trim()
+  const index = bodyWithoutMarkers.indexOf(match[0])
+  const bodyContent = bodyWithoutMarkers.substring(0, index).trim()
+  let imageSuggestion = bodyWithoutMarkers.substring(index + match[0].length).trim()
 
   // 4. 清理配图建议中的页面标签（防止残留）
   imageSuggestion = imageSuggestion.replace(/<\/?page>/gi, '').trim()
