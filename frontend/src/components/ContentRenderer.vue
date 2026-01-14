@@ -131,15 +131,16 @@ const handleStartEdit = () => {
 /* 流式内容容器 */
 .streaming-content {
   flex: 1;
-  background: #fafafa;
+  background: rgba(255, 255, 255, 0.95);
   border-radius: 6px;
-  padding: 12px;
-  border: 1px solid #f0f0f0;
+  padding: 12px 16px;
+  border: 1px solid rgba(24, 144, 255, 0.2);
   max-height: 400px;
   overflow-y: auto;
   overflow-x: hidden;
   width: 100%;
   box-sizing: border-box;
+  box-shadow: 0 0 0 1px rgba(24, 144, 255, 0.1);
 }
 
 /* 流式文本容器 */
@@ -152,17 +153,24 @@ const handleStartEdit = () => {
   overflow-wrap: break-word;
   word-break: break-word;
   width: 100%;
+  max-width: 100%;
   box-sizing: border-box;
 }
 
 /* 流式内容的正文样式 */
 .streaming-text .streaming-body {
   display: block;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 /* 流式内容的完整样式（包含标题） */
 .streaming-text .full-content {
   display: block;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 /* 光标样式 */
@@ -214,7 +222,7 @@ const handleStartEdit = () => {
 /* 只读内容容器 */
 .readonly-content {
   flex: 1;
-  padding: 12px;
+  padding: 12px 16px;
   border-radius: 12px;
   border: 1px solid transparent;
   cursor: pointer;
@@ -223,6 +231,7 @@ const handleStartEdit = () => {
   overflow-y: auto;
   overflow-x: hidden;
   width: 100%;
+  max-width: 100%;
   box-sizing: border-box;
 }
 
@@ -243,6 +252,9 @@ const handleStartEdit = () => {
   word-wrap: break-word;
   overflow-wrap: break-word;
   word-break: break-word;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 /* 完整内容样式（包含标题的 Markdown） */
@@ -250,6 +262,9 @@ const handleStartEdit = () => {
   white-space: normal;
   overflow-wrap: break-word;
   word-break: break-word;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 /* Markdown 样式 */
@@ -257,6 +272,8 @@ const handleStartEdit = () => {
   white-space: normal;
   overflow-wrap: break-word;
   word-break: break-word;
+  width: 100%;
+  max-width: 100%;
 }
 
 .markdown-body h1,
@@ -269,6 +286,9 @@ const handleStartEdit = () => {
   margin-top: 1em;
   margin-bottom: 0.5em;
   color: #262626;
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .markdown-body h1 { font-size: 1.5em; }
@@ -278,21 +298,38 @@ const handleStartEdit = () => {
 
 .markdown-body p {
   margin: 0.5em 0;
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .markdown-body ul,
 .markdown-body ol {
-  padding-left: 2em;
+  padding-left: 0.5em;
+  padding-right: 0.5em;
   margin: 0.5em 0;
   overflow-wrap: break-word;
   word-break: break-word;
+  max-width: 100%;
+  list-style-position: inside;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .markdown-body li {
   margin: 0.25em 0;
+  padding-left: 0.3em;
+  padding-right: 0;
   overflow-wrap: break-word;
   word-break: break-word;
-  list-style-position: outside;
+  max-width: 100%;
+  box-sizing: border-box;
+  display: list-item;
+}
+
+.markdown-body li::marker {
+  display: inline-block;
+  margin-right: 0.5em;
 }
 
 /* 确保列表内容正确显示 */

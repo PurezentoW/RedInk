@@ -1063,10 +1063,11 @@ const handleModify = async (instruction: string) => {
 
 /* 卡片状态样式（新增） */
 .outline-card.streaming-active {
-  border: 1px solid var(--info);
+  border: 1px solid rgba(24, 144, 255, 0.4);
   box-shadow: 0 0 0 3px rgba(24, 144, 255, 0.1);
   position: relative;
   overflow: hidden;
+  opacity: 1 !important;
 }
 
 /* 流式光效背景 */
@@ -1133,10 +1134,16 @@ const handleModify = async (instruction: string) => {
   flex-direction: column;
   margin: var(--space-3) 0;
   padding: var(--space-3);
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.5);
   border-radius: var(--radius-md);
   /* 性能优化 */
   contain: layout style paint;
+}
+
+/* 流式生成时的内容显示容器 - 更清晰 */
+.streaming-active .content-display {
+  background: rgba(255, 255, 255, 0.95) !important;
+  border: 1px solid rgba(24, 144, 255, 0.15);
 }
 
 /* 配图建议框（卡片底部） */
@@ -1236,14 +1243,21 @@ const handleModify = async (instruction: string) => {
   pointer-events: none;
 }
 
-/* 全局禁用状态（流式生成中） */
-.outline-grid.disabled {
-  /* 保持卡片原始样式，不添加覆盖层或边框动画 */
+/* 全局禁用状态（流式生成中） - 非流式卡片变灰 */
+.outline-grid.disabled .outline-card {
+  opacity: 0.6;
+  pointer-events: none;
 }
 
-.disabled {
-  opacity: 0.5;
-  pointer-events: none;
+/* 保持正在流式生成的卡片完全清晰 - 必须放在后面覆盖 */
+.outline-grid.disabled .outline-card.streaming-active {
+  opacity: 1 !important;
+  pointer-events: auto;
+}
+
+/* 流式卡片内容区域可交互 */
+.outline-card.streaming-active .content-display {
+  pointer-events: auto;
 }
 
 /* Spinner 动画 */
