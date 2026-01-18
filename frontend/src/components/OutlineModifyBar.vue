@@ -110,78 +110,101 @@ const handleStartModify = () => {
   transform: translateX(-50%);
   width: 600px;
   max-width: calc(100vw - 48px);
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--glass-bg, rgba(255, 255, 255, 0.95));
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 16px;
-  padding: 16px;
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.5));
+  border-radius: 20px;
+  padding: 20px;
   z-index: 1000;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
 }
 
 .modify-input {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   align-items: flex-end;
 }
 
 .instruction-textarea {
   flex: 1;
-  padding: 10px 12px;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  border-radius: 10px;
+  padding: 12px 16px;
+  border: 2px solid rgba(0, 0, 0, 0.06);
+  border-radius: 12px;
   resize: none;
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: 15px;
+  line-height: 1.6;
   font-family: inherit;
-  background: rgba(255, 255, 255, 0.9);
-  transition: all 0.2s;
-  min-height: 44px;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  min-height: 48px;
   max-height: 80px;
+  color: #1F2937;
+}
+
+.instruction-textarea::placeholder {
+  color: #9CA3AF;
 }
 
 .instruction-textarea:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  background: rgba(255, 255, 255, 0.95);
+  border-color: var(--primary, #FF2442);
+  box-shadow: 0 0 0 4px rgba(255, 36, 66, 0.1);
 }
 
 .instruction-textarea:disabled {
-  background: #f9fafb;
-  color: #9ca3af;
+  background: rgba(249, 250, 251, 0.8);
+  color: #9CA3AF;
   cursor: not-allowed;
-}
-
-.instruction-textarea::placeholder {
-  color: #9ca3af;
 }
 
 .send-btn {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 10px 20px;
-  height: 44px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  gap: 8px;
+  padding: 12px 24px;
+  height: 48px;
+  background: linear-gradient(135deg, #FF2442 0%, #FF6B8A 100%);
   color: white;
   border: none;
-  border-radius: 10px;
+  border-radius: 12px;
   cursor: pointer;
   font-weight: 600;
-  font-size: 14px;
+  font-size: 15px;
   white-space: nowrap;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 12px rgba(255, 36, 66, 0.25);
 }
 
 .send-btn:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  box-shadow: 0 6px 20px rgba(255, 36, 66, 0.35);
+}
+
+.send-btn:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .send-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+  transform: none;
+  box-shadow: 0 4px 12px rgba(255, 36, 66, 0.15);
 }
 
 .send-btn svg {
@@ -189,8 +212,8 @@ const handleStartModify = () => {
 }
 
 .spinner {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   border: 2px solid rgba(255, 255, 255, 0.3);
   border-top: 2px solid white;
   border-radius: 50%;
@@ -204,15 +227,15 @@ const handleStartModify = () => {
 
 .quick-commands {
   display: flex;
-  gap: 6px;
-  margin-top: 10px;
+  gap: 8px;
+  margin-top: 12px;
   overflow-x: auto;
   padding-bottom: 2px;
 }
 
 /* 隐藏滚动条但保持可滚动 */
 .quick-commands::-webkit-scrollbar {
-  height: 3px;
+  height: 4px;
 }
 
 .quick-commands::-webkit-scrollbar-track {
@@ -220,26 +243,36 @@ const handleStartModify = () => {
 }
 
 .quick-commands::-webkit-scrollbar-thumb {
-  background: rgba(102, 126, 234, 0.3);
+  background: rgba(255, 36, 66, 0.2);
   border-radius: 2px;
 }
 
+.quick-commands::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 36, 66, 0.3);
+}
+
 .command-tag {
-  padding: 5px 10px;
-  background: rgba(102, 126, 234, 0.08);
-  color: #667eea;
-  border: 1px solid rgba(102, 126, 234, 0.2);
-  border-radius: 14px;
-  font-size: 12px;
+  padding: 6px 14px;
+  background: rgba(255, 36, 66, 0.08);
+  color: var(--primary, #FF2442);
+  border: 1px solid rgba(255, 36, 66, 0.2);
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .command-tag:hover:not(:disabled) {
-  background: rgba(102, 126, 234, 0.2);
-  border-color: rgba(102, 126, 234, 0.5);
-  transform: translateY(-1px);
+  background: rgba(255, 36, 66, 0.15);
+  border-color: rgba(255, 36, 66, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 36, 66, 0.15);
+}
+
+.command-tag:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .command-tag:disabled {
@@ -253,32 +286,33 @@ const handleStartModify = () => {
     bottom: 16px;
     width: calc(100vw - 32px);
     max-width: none;
-    padding: 12px;
+    padding: 16px;
+    border-radius: 16px;
   }
 
   .modify-input {
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
   }
 
   .send-btn {
     width: 100%;
     justify-content: center;
-    height: 40px;
+    height: 44px;
   }
 
   .instruction-textarea {
-    min-height: 40px;
+    min-height: 44px;
   }
 
   .quick-commands {
     flex-wrap: wrap;
-    gap: 4px;
+    gap: 6px;
   }
 
   .command-tag {
-    font-size: 11px;
-    padding: 4px 8px;
+    font-size: 12px;
+    padding: 5px 12px;
   }
 }
 </style>
